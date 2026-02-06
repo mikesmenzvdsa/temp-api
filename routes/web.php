@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use app\Http\Controllers\PropertiesController;
+use App\Http\Controllers\LoginController;
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -16,6 +17,12 @@ use app\Http\Controllers\PropertiesController;
 Route::get('/', function () {
     return view('welcome');
 });
+
+Route::get('/login', [LoginController::class, 'show'])->name('login');
+Route::post('/login', [LoginController::class, 'login']);
+Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
+
+Route::get('/me', [LoginController::class, 'me'])->middleware('auth');
 Route::group(['prefix' => 'properties'], function () {
 
     $controller = 'VirtualDesigns\HostAgentsApi\Controllers\PropertiesController';
