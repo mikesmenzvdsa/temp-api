@@ -60,6 +60,7 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                PDO::ATTR_TIMEOUT => (int) env('DB_PDO_TIMEOUT', 5),
             ]) : [],
         ],
 
@@ -80,6 +81,7 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                PDO::ATTR_TIMEOUT => (int) env('REMOTE_DB_PDO_TIMEOUT', env('DB_PDO_TIMEOUT', 5)),
             ]) : [],
         ],
 
@@ -100,6 +102,7 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                PDO::ATTR_TIMEOUT => (int) env('ACCLIVE_DB_PDO_TIMEOUT', env('DB_PDO_TIMEOUT', 5)),
             ]) : [],
         ],
 
@@ -120,6 +123,7 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                PDO::ATTR_TIMEOUT => (int) env('ACCTEST_DB_PDO_TIMEOUT', env('DB_PDO_TIMEOUT', 5)),
             ]) : [],
         ],
 
@@ -140,6 +144,7 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                PDO::ATTR_TIMEOUT => (int) env('ACCUAE_DB_PDO_TIMEOUT', env('DB_PDO_TIMEOUT', 5)),
             ]) : [],
         ],
 

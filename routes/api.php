@@ -4,6 +4,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\PropertiesController;
 use App\Http\Controllers\Api\BookingsController;
+use App\Http\Controllers\Api\UsersController;
+use App\Http\Controllers\Api\DashboardController;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,7 +22,16 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
+Route::options('{any}', function () {
+    return response()
+        ->json([], 204)
+        ->header('Access-Control-Allow-Origin', '*')
+        ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+        ->header('Access-Control-Allow-Headers', '*');
+})->where('any', '.*');
+
 Route::prefix('v2')->group(function () {
+    Route::get('dashboard', [DashboardController::class, 'index']);
     Route::prefix('bookings')->group(function () {
         Route::get('checkavail', [BookingsController::class, 'checkAvail']);
         Route::get('nightsbridgebookings', [BookingsController::class, 'nightsbridgeBookings']);
@@ -81,4 +92,10 @@ Route::prefix('v2')->group(function () {
     });
 
     Route::resource('properties', PropertiesController::class);
+
+    Route::prefix('users')->group(function () {
+        Route::get('authenticate', [UsersController::class, 'authenticateUser']);
+    });
+
+    Route::resource('users', UsersController::class)->only(['index', 'show']);
 });

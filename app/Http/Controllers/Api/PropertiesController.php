@@ -79,7 +79,7 @@ class PropertiesController extends Controller
 
             $groupId = DB::table('users_groups')->where('user_id', '=', $userid)->value('user_group_id');
             if ($groupId === null) {
-                return $this->corsJson([], 200);
+                $groupId = 2;
             }
 
             $query = DB::table('virtualdesigns_properties_properties as properties')

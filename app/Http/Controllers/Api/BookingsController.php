@@ -17,7 +17,382 @@ class BookingsController extends Controller
 
     public function show(Request $request, $id)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $arrivalStart = $request->header('arrivalstart');
+        $arrivalEnd = $request->header('arrivalend');
+        $departureStart = $request->header('departurestart');
+        $departureEnd = $request->header('departureend');
+        $startDateHeader = $request->header('startdate');
+        $arrivalHeader = $request->header('arrival');
+        $departureHeader = $request->header('departure');
+        $overlap = strtolower((string) $request->header('overlap', 'false')) === 'true';
+        $propIdsHeader = $request->header('propid');
+        $showNightsbridge = strtolower((string) $request->header('nightsbridge', 'false')) === 'true';
+
+        if (!$arrivalStart && $arrivalHeader && $departureHeader) {
+            $arrivalStart = $arrivalHeader;
+            $arrivalEnd = $departureHeader;
+        }
+
+        if ($startDateHeader) {
+            if (preg_match('/^\d{4}-\d{1,2}$/', $startDateHeader)) {
+                $startDate = date('Y-m-d', strtotime($startDateHeader . '-01'));
+            } else {
+                $startDate = date('Y-m-d', strtotime('01-' . $startDateHeader));
+            }
+            $endDate = date('Y-m-t', strtotime($startDate));
+        } else {
+            $startDate = null;
+            $endDate = null;
+        }
+
+        $user = DB::table('users')->where('id', '=', $id)->first();
+        if (!$user) {
+            return $this->corsJson(['code' => 404, 'message' => 'User not found'], 404);
+        }
+
+        $groupId = DB::table('users_groups')->where('user_id', '=', $id)->value('user_group_id');
+        if ($groupId === null) {
+            $groupId = 2;
+        }
+        $propIds = $propIdsHeader ? array_filter(explode(',', $propIdsHeader)) : null;
+
+        $baseQuery = DB::table('virtualdesigns_erpbookings_erpbookings as booking')
+            ->join('virtualdesigns_properties_properties as property', 'booking.property_id', '=', 'property.id')
+            ->leftJoin('users as manager', 'property.user_id', '=', 'manager.id')
+            ->leftJoin('users as salesperson', 'booking.made_by', '=', 'salesperson.id')
+            ->whereNull('booking.deleted_at');
+
+        if ((int) $groupId === 1) {
+            $baseQuery->where('property.owner_id', '=', $id);
+        } elseif ((int) $groupId === 3) {
+            $baseQuery->where('property.user_id', '=', $id);
+        } elseif ((int) $groupId === 5) {
+            $baseQuery->where('property.bodycorp_id', '=', $id);
+        }
+
+        if ((int) $id === 1636 || (int) $id === 1709) {
+            $baseQuery->where('property.name', 'like', '%Winelands Golf Lodges%');
+        }
+
+        if ($arrivalStart && $arrivalEnd) {
+            $baseQuery->where('booking.arrival_date', '>=', date('Y-m-d', strtotime($arrivalStart)))
+                ->where('booking.arrival_date', '<=', date('Y-m-d', strtotime($arrivalEnd)));
+        }
+
+        if ($departureStart && $departureEnd) {
+            $baseQuery->where('booking.departure_date', '>=', date('Y-m-d', strtotime($departureStart)))
+                ->where('booking.departure_date', '<=', date('Y-m-d', strtotime($departureEnd)));
+        }
+
+        if ($startDate && $endDate) {
+            $baseQuery->where('booking.arrival_date', '<=', $endDate)
+                ->where('booking.departure_date', '>=', $startDate);
+        }
+
+        if ($showNightsbridge) {
+            $baseQuery->where('booking.status', '=', 0);
+        }
+
+        if ($propIds) {
+            $baseQuery->whereIn('booking.property_id', $propIds);
+        }
+
+        if ($request->header('todayarrival')) {
+            $baseQuery->where('booking.arrival_date', '=', date('Y-m-d', strtotime($request->header('todayarrival'))));
+        }
+
+        if ($request->header('todaydeparture')) {
+            $baseQuery->where('booking.departure_date', '=', date('Y-m-d', strtotime($request->header('todaydeparture'))));
+        }
+
+        if ($request->header('istoday')) {
+            $today = date('Y-m-d');
+            $baseQuery->where('booking.arrival_date', '<', $today)
+                ->where('booking.departure_date', '>', $today);
+        }
+
+        $bookings = $baseQuery->select(
+            'booking.*',
+            'property.name as prop_name',
+            'property.accounting_name as accounting_name',
+            'property.country_id as country_id',
+            'manager.name as manager_name',
+            'manager.surname as manager_surname',
+            'manager.email as manager_email',
+            'salesperson.name as salesperson_name',
+            'salesperson.surname as salesperson_surname',
+            'salesperson.email as salesperson_email',
+            'salesperson.id as salesperson_id'
+        )->get();
+
+        if ($overlap) {
+            $overlapIds = [];
+            $count = count($bookings);
+
+            for ($i = 0; $i < $count; $i++) {
+                for ($j = $i + 1; $j < $count; $j++) {
+                    if ($bookings[$i]->property_id !== $bookings[$j]->property_id) {
+                        continue;
+                    }
+                    if ($bookings[$i]->arrival_date === $bookings[$j]->departure_date
+                        || $bookings[$i]->departure_date === $bookings[$j]->arrival_date
+                    ) {
+                        continue;
+                    }
+                    $overlaps = $bookings[$i]->arrival_date < $bookings[$j]->departure_date
+                        && $bookings[$i]->departure_date > $bookings[$j]->arrival_date;
+                    if ($overlaps) {
+                        $overlapIds[$bookings[$i]->id] = true;
+                        $overlapIds[$bookings[$j]->id] = true;
+                    }
+                }
+            }
+
+            $bookings = $bookings->filter(function ($booking) use ($overlapIds) {
+                return isset($overlapIds[$booking->id]);
+            })->values();
+        }
+
+        foreach ($bookings as $booking) {
+            if (!isset($booking->currency)) {
+                if ((int) $booking->country_id === 846) {
+                    $booking->currency = 'MUR';
+                } elseif ((int) $booking->country_id === 854) {
+                    $booking->currency = 'AED';
+                } else {
+                    $booking->currency = 'ZAR';
+                }
+            }
+        }
+
+        if ($showNightsbridge && $startDate) {
+            $nbStartDate = $startDate;
+            if (date('m', strtotime($startDate)) === date('m') && strtotime($startDate) < strtotime(date('Y-m-d'))) {
+                $nbStartDate = date('Y-m-d');
+            }
+
+            $nights = (int) $request->header('nights', 0);
+            if ($nights > 1) {
+                $nights = $nights - 1;
+            }
+            $endAvail = $nights > 0
+                ? date('Y-m-d', strtotime($nbStartDate . ' + ' . $nights . ' days'))
+                : ($endDate ?? $nbStartDate);
+
+            $availabilityData = $this->loadAvailabilityData($nbStartDate, $endAvail, $propIds ?? []);
+            if (!empty($availabilityData)) {
+                $bookingsByProp = [];
+                foreach ($bookings as $booking) {
+                    $bookingsByProp[$booking->property_id][] = $booking;
+                }
+                $availabilityEntries = $this->buildAvailabilityEntries($availabilityData, $nbStartDate, $endAvail, $bookingsByProp);
+                if (!empty($availabilityEntries)) {
+                    $bookings = $bookings->concat(collect($availabilityEntries));
+                }
+            }
+        }
+
+        return $this->corsJson($bookings, 200);
+    }
+
+    private function loadAvailabilityData(string $startDate, string $endDate, array $propIds): array
+    {
+        $propertiesQuery = DB::table('virtualdesigns_properties_properties')->whereNull('deleted_at');
+        if (!empty($propIds)) {
+            $propertiesQuery->whereIn('id', $propIds);
+        }
+        $properties = $propertiesQuery->get();
+
+        if ($properties->isEmpty()) {
+            return [];
+        }
+
+        $siteSettings = DB::table('virtualdesigns_settings_settings')->first();
+        $nbActive = $siteSettings && (int) $siteSettings->nb_active === 1;
+
+        $availData = [];
+        foreach ($properties as $index => $prop) {
+            $propAvail = null;
+            if ($prop->pricelabs_id !== null) {
+                $propAvail = DB::connection('remote')->table('price_lists')
+                    ->where('pl_id', '=', $prop->pricelabs_id)
+                    ->where('date', '>=', $startDate)
+                    ->where('date', '<=', $endDate)
+                    ->get();
+            } elseif ($nbActive) {
+                $payload = [
+                    'bbid' => (int) $prop->nb_id,
+                    'startdate' => date('Y-m-d', strtotime($startDate)),
+                    'enddate' => date('Y-m-d', strtotime($endDate)),
+                    'showrates' => true,
+                    'strictsearch' => false,
+                ];
+                $response = $this->nightsbridgePost('https://www.nightsbridge.co.za/bridge/api/5.0/availgrid', $payload);
+                if ($response && isset($response->success) && $response->success === true) {
+                    if ((int) $prop->as_room === 1 && $prop->bbrtid && isset($response->data->roomtypes)) {
+                        foreach ($response->data->roomtypes as $roomType) {
+                            if (isset($roomType->rtid) && (string) $roomType->rtid === (string) $prop->bbrtid) {
+                                $propAvail = $roomType->availability ?? null;
+                                break;
+                            }
+                        }
+                    } else {
+                        $propAvail = $response->data->roomtypes ?? null;
+                    }
+                }
+            }
+
+            $availData[$index]['propid'] = $prop->id;
+            $availData[$index]['avail'] = $propAvail;
+        }
+
+        foreach ($availData as $idx => $data) {
+            if (isset($data['avail']) && is_array($data['avail'])) {
+                $dateCursor = date('Y-m-d', strtotime($startDate));
+                foreach ($data['avail'] as $avItem) {
+                    if (is_object($avItem) && !isset($avItem->date)) {
+                        $avItem->date = $dateCursor;
+                    } elseif (is_array($avItem) && !isset($avItem['date'])) {
+                        $avItem['date'] = $dateCursor;
+                    }
+                    $dateCursor = date('Y-m-d', strtotime($dateCursor . ' + 1 days'));
+                }
+            }
+            $availData[$idx] = $data;
+        }
+
+        return $availData;
+    }
+
+    private function buildAvailabilityEntries(array $availabilityData, string $startDate, string $endDate, array $bookingsByProp): array
+    {
+        $entries = [];
+        $count = 0;
+
+        foreach ($availabilityData as $data) {
+            $propId = $data['propid'] ?? null;
+            $avail = $data['avail'] ?? null;
+            if ($propId === null || $avail === null || is_string($avail) || empty($avail)) {
+                continue;
+            }
+
+            $availStart = null;
+            $availCount = 0;
+            $dateCursor = date('Y-m-d', strtotime($startDate));
+
+            foreach ($avail as $dayAvail) {
+                $dayDate = is_object($dayAvail)
+                    ? ($dayAvail->date ?? $dateCursor)
+                    : ($dayAvail['date'] ?? $dateCursor);
+                $dateCursor = date('Y-m-d', strtotime($dayDate . ' + 1 days'));
+
+                $hasBooking = false;
+                if (isset($bookingsByProp[$propId])) {
+                    foreach ($bookingsByProp[$propId] as $booking) {
+                        if ($booking->arrival_date < $dayDate && $booking->departure_date > $dayDate) {
+                            $hasBooking = true;
+                            break;
+                        }
+                    }
+                }
+                if ($hasBooking) {
+                    continue;
+                }
+
+                $isAvailable = true;
+                if (is_object($dayAvail) && isset($dayAvail->booked)) {
+                    $isAvailable = (int) $dayAvail->booked === 0;
+                } elseif (is_array($dayAvail) && isset($dayAvail['booked'])) {
+                    $isAvailable = (int) $dayAvail['booked'] === 0;
+                } elseif (is_object($dayAvail) && isset($dayAvail->noroomsfree)) {
+                    $isAvailable = (int) $dayAvail->noroomsfree > 0;
+                } elseif (is_array($dayAvail) && isset($dayAvail['noroomsfree'])) {
+                    $isAvailable = (int) $dayAvail['noroomsfree'] > 0;
+                } elseif (is_object($dayAvail) && isset($dayAvail->available)) {
+                    $isAvailable = (bool) $dayAvail->available;
+                } elseif (is_array($dayAvail) && isset($dayAvail['available'])) {
+                    $isAvailable = (bool) $dayAvail['available'];
+                }
+
+                if ($isAvailable) {
+                    $price = is_object($dayAvail)
+                        ? ($dayAvail->price ?? $dayAvail->roomrate ?? null)
+                        : ($dayAvail['price'] ?? $dayAvail['roomrate'] ?? null);
+                    $currency = is_object($dayAvail)
+                        ? ($dayAvail->currency ?? null)
+                        : ($dayAvail['currency'] ?? null);
+
+                    if ($price !== null) {
+                        $entries[] = [
+                            'id' => 'a' . $count,
+                            'arrival_date' => $dayDate,
+                            'departure_date' => date('Y-m-d', strtotime($dayDate . ' + 1 days')),
+                            'property_id' => $propId,
+                            'client_name' => '',
+                            'prop_name' => '',
+                            'booking_ref' => '',
+                            'channel' => 'rate',
+                            'status' => 0,
+                            'price' => $price,
+                            'currency' => $currency,
+                            'created_at' => $dayDate,
+                        ];
+                        $count++;
+                    }
+
+                    if ($availStart !== null) {
+                        $depDate = date('Y-m-d', strtotime($availStart . ' + ' . max(1, $availCount + 1) . ' days'));
+                        $entries[] = [
+                            'id' => 'a' . $count,
+                            'arrival_date' => $availStart,
+                            'departure_date' => $depDate,
+                            'property_id' => $propId,
+                            'client_name' => '',
+                            'prop_name' => '',
+                            'booking_ref' => '',
+                            'channel' => 'availability',
+                            'status' => 0,
+                            'price' => '',
+                            'created_at' => $availStart,
+                        ];
+                        $count++;
+                        $availStart = null;
+                        $availCount = 0;
+                    }
+                } else {
+                    if ($availStart === null) {
+                        $availStart = $dayDate;
+                        $availCount = 0;
+                    } else {
+                        $availCount++;
+                    }
+
+                    if ($dayDate === $endDate) {
+                        $depDate = date('Y-m-d', strtotime($availStart . ' + ' . max(1, $availCount + 1) . ' days'));
+                        $entries[] = [
+                            'id' => 'a' . $count,
+                            'arrival_date' => $availStart,
+                            'departure_date' => $depDate,
+                            'property_id' => $propId,
+                            'client_name' => '',
+                            'prop_name' => '',
+                            'booking_ref' => '',
+                            'channel' => 'availability',
+                            'status' => 0,
+                            'price' => '',
+                            'created_at' => $availStart,
+                        ];
+                        $count++;
+                        $availStart = null;
+                        $availCount = 0;
+                    }
+                }
+            }
+        }
+
+        return $entries;
     }
 
     public function store(Request $request)
