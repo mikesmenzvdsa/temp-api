@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\RentalsUnitedService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class PropertiesController extends Controller
@@ -903,17 +906,217 @@ class PropertiesController extends Controller
 
     public function syncWithRentalsUnited(Request $request)
     {
-        return $this->corsJson(['error' => 'Not implemented'], 501);
+        try {
+            $this->assertApiKey($request);
+
+            $propertyId = (int) ($request->header('propid') ?? $request->input('propid', 0));
+
+            $propertiesQuery = DB::table('virtualdesigns_properties_properties')
+                ->whereNull('deleted_at');
+
+            if ($propertyId > 0) {
+                $propertiesQuery->where('id', '=', $propertyId);
+            }
+
+            $properties = $propertiesQuery->get();
+            $rentalsUnited = new RentalsUnitedService();
+            $results = [];
+
+            foreach ($properties as $property) {
+                if (!$property->listing_type_id || (!$property->country_id && !$property->city_id)) {
+                    $results[] = [
+                        'property_id' => $property->id,
+                        'status' => 'Skipped',
+                        'message' => 'Missing listing type or location',
+                    ];
+                    continue;
+                }
+
+                if ($property->rentals_united_id) {
+                    $response = $rentalsUnited->put((int) $property->id, (int) $property->rentals_united_id);
+                } else {
+                    $response = $rentalsUnited->push((int) $property->id);
+                    if (is_object($response) && ($response->Status ?? null) === 'Success' && isset($response->ID)) {
+                        DB::table('virtualdesigns_properties_properties')
+                            ->where('id', '=', $property->id)
+                            ->update(['rentals_united_id' => (int) $response->ID]);
+                    }
+                }
+
+                $results[] = [
+                    'property_id' => $property->id,
+                    'response' => $this->normalizeXmlResponse($response),
+                ];
+            }
+
+            return $this->corsJson(['data' => $results], 200);
+        } catch (\Throwable $e) {
+            if ($e instanceof HttpResponseException) {
+                return $e->getResponse();
+            }
+            return $this->corsJson(['error' => $e->getMessage()], 500);
+        }
     }
 
     public function getRentalsUnitedProperties(Request $request)
     {
-        return $this->corsJson(['error' => 'Not implemented'], 501);
+        try {
+            $this->assertApiKey($request);
+
+            $propertyId = (int) ($request->header('propid') ?? $request->input('propid', 0));
+            if ($propertyId <= 0) {
+                return $this->corsJson(['error' => 'Property id is required'], 400);
+            }
+
+            $rentalsUnited = new RentalsUnitedService();
+            $response = $rentalsUnited->getRUProperties($propertyId);
+
+            return $this->corsJson($this->normalizeXmlResponse($response), 200);
+        } catch (\Throwable $e) {
+            if ($e instanceof HttpResponseException) {
+                return $e->getResponse();
+            }
+            return $this->corsJson(['error' => $e->getMessage()], 500);
+        }
     }
 
     public function sendWelcomeLetterPreview(Request $request)
     {
-        return $this->corsJson(['error' => 'Not implemented'], 501);
+        try {
+            $this->assertApiKey($request);
+
+            $propertyId = (int) ($request->header('propid') ?? $request->input('propid', 0));
+            $email = $request->header('email') ?? $request->input('email');
+
+            if ($propertyId <= 0 || !$email) {
+                return $this->corsJson(['error' => 'Property id and email are required'], 400);
+            }
+
+            $property = DB::table('virtualdesigns_properties_properties')->where('id', '=', $propertyId)->first();
+            if (!$property) {
+                return $this->corsJson(['error' => 'Property not found'], 404);
+            }
+
+            $today = date('Y-m-d');
+
+            $booking = DB::table('virtualdesigns_erpbookings_erpbookings')
+                ->where('status', '!=', 1)
+                ->whereNull('deleted_at')
+                ->where('arrival_date', '>=', $today)
+                ->where('property_id', '=', $propertyId)
+                ->orderBy('arrival_date')
+                ->first();
+
+            $opInfo = DB::table('virtualdesigns_operationalinformation_operationalinformation')
+                ->where('property_id', '=', $propertyId)
+                ->first();
+
+            $propManager = DB::table('users')->where('id', '=', $property->user_id)->first();
+            $managerInfo = DB::table('virtualdesigns_clientinformation_')
+                ->where('user_id', '=', $property->user_id)
+                ->first();
+
+            $managerContactNumber = $managerInfo->contact_number ?? null;
+            $managerName = $propManager
+                ? trim(($propManager->name ?? '') . ' ' . ($propManager->surname ?? ''))
+                : 'Host Agents';
+
+            $imageUrl = '';
+            $imageRecord = DB::table('system_files')
+                ->where('attachment_type', '=', 'Virtualdesigns\\Properties\\Models\\Property')
+                ->where('attachment_id', '=', $propertyId)
+                ->where('field', '=', 'image_gallery')
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->first();
+
+            if ($imageRecord) {
+                $imageUrl = Storage::disk('public')->url($imageRecord->disk_name);
+            }
+
+            if ($booking) {
+                $clientName = $booking->client_name;
+                $arrivalDate = $booking->arrival_date;
+                $departureDate = $booking->departure_date;
+                $bookingRef = $booking->booking_ref;
+                $bookingId = $booking->booking_id;
+            } else {
+                $clientName = 'Test Client';
+                $arrivalDate = date('Y-m-d');
+                $departureDate = date('Y-m-d', strtotime($arrivalDate . ' +4 day'));
+                $bookingRef = 'Test';
+                $bookingId = 0;
+            }
+
+            $vars = [
+                'client_name' => $clientName,
+                'client_email' => $email,
+                'prop_name' => $property->name,
+                'prop_manager_name' => $managerName,
+                'prop_manager_phone' => $managerContactNumber,
+                'arrival_date' => date('d/m/Y', strtotime($arrivalDate)),
+                'departure_date' => date('d/m/Y', strtotime($departureDate)),
+                'booking_ref' => $bookingRef,
+                'booking_id' => $bookingId,
+                'physical_address' => $property->physical_address,
+                'prop_lat' => $property->latitude,
+                'prop_long' => $property->longitude,
+                'directions_link' => $property->directions_link,
+                'parking_notes' => $opInfo->parking_notes ?? null,
+                'guest_checkin_info' => $opInfo->guest_checkin_info ?? null,
+                'wifi_username' => $opInfo->wifi_username ?? null,
+                'wifi_password' => $opInfo->wifi_password ?? null,
+                'tv_instructions' => $opInfo->tv_instructions ?? null,
+                'meter_number' => $opInfo->meter_number ?? null,
+                'refuse_collection_notes' => $opInfo->refuse_collection_notes ?? null,
+                'guest_info' => $opInfo->guest_info ?? null,
+                'guest_departure_info' => $opInfo->guest_departure_info ?? null,
+                'inv_url' => $property->inventory_url ?? null,
+                'prop_photo' => $imageUrl,
+            ];
+
+            $altEmail = null;
+            if ($booking) {
+                $guestInfo = DB::table('virtualdesigns_erpbookings_guestinfo')
+                    ->where('booking_id', '=', $booking->id)
+                    ->first();
+                if ($guestInfo && !empty($guestInfo->guest_alternative_email_address) && str_contains($guestInfo->guest_alternative_email_address, '@')) {
+                    $altEmail = $guestInfo->guest_alternative_email_address;
+                }
+            }
+
+            $attachments = [];
+            if ($opInfo) {
+                $attachments = DB::table('system_files')
+                    ->where('attachment_type', '=', 'Virtualdesigns\\Operationalinformation\\Models\\Operationalinformation')
+                    ->where('attachment_id', '=', $opInfo->id)
+                    ->where('field', '=', 'welcome_attachments')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->get();
+            }
+
+            Mail::send('mail.welcome_letter', $vars, function ($message) use ($vars, $altEmail, $attachments) {
+                $message->to($vars['client_email']);
+                if ($altEmail) {
+                    $message->cc($altEmail);
+                }
+                $message->subject('Welcome Letter - ' . $vars['prop_name']);
+
+                foreach ($attachments as $attachment) {
+                    if (Storage::disk('public')->exists($attachment->disk_name)) {
+                        $message->attach(Storage::disk('public')->path($attachment->disk_name));
+                    }
+                }
+            });
+
+            return $this->corsJson('success', 200);
+        } catch (\Throwable $e) {
+            if ($e instanceof HttpResponseException) {
+                return $e->getResponse();
+            }
+            return $this->corsJson(['error' => $e->getMessage()], 500);
+        }
     }
 
     public function SyncRatesAvail($id)
@@ -1124,5 +1327,14 @@ class PropertiesController extends Controller
     protected function getPaginatorSlice($results, $page)
     {
         return array_slice($results, ($page - 1) * 20, 20);
+    }
+
+    private function normalizeXmlResponse($response)
+    {
+        if ($response instanceof \SimpleXMLElement) {
+            return json_decode(json_encode($response), true);
+        }
+
+        return $response;
     }
 }

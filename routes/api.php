@@ -7,6 +7,11 @@ use App\Http\Controllers\Api\BookingsController;
 use App\Http\Controllers\Api\UsersController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\StatsController;
+use App\Http\Controllers\Api\ChannelsController;
+use App\Http\Controllers\Api\ListingTypesController;
+use App\Http\Controllers\Api\LocationsController;
+use App\Http\Controllers\Api\FeaturesController;
+use App\Http\Controllers\Api\EstablishmentDetailsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,10 +37,18 @@ Route::options('{any}', function () {
 })->where('any', '.*');
 
 Route::prefix('v2')->group(function () {
+    Route::resource('channels', ChannelsController::class);
     Route::get('dashboard', [DashboardController::class, 'index']);
     Route::prefix('stats')->group(function () {
         Route::get('getturnover', [StatsController::class, 'getTurnover']);
     });
+    Route::prefix('locations')->group(function () {
+        Route::get('serp', [LocationsController::class, 'serp']);
+    });
+
+    Route::resource('locations', LocationsController::class);
+    Route::resource('listingtypes', ListingTypesController::class);
+
     Route::prefix('bookings')->group(function () {
         Route::get('checkavail', [BookingsController::class, 'checkAvail']);
         Route::get('nightsbridgebookings', [BookingsController::class, 'nightsbridgeBookings']);
@@ -96,6 +109,32 @@ Route::prefix('v2')->group(function () {
     });
 
     Route::resource('properties', PropertiesController::class);
+
+    Route::resource('features', FeaturesController::class);
+
+    Route::prefix('establishment-details')->group(function () {
+        Route::get('get-prop-table-info', [EstablishmentDetailsController::class, 'getPropTableInfo']);
+        Route::put('update-prop-table-info/{id}', [EstablishmentDetailsController::class, 'updatePropTableInfo']);
+        Route::get('get-details/{id}', [EstablishmentDetailsController::class, 'getDetails']);
+        Route::get('get-features/{id}', [EstablishmentDetailsController::class, 'getFeatures']);
+        Route::put('update-features/{id}', [EstablishmentDetailsController::class, 'updateFeatures']);
+        Route::get('get-photos/{id?}', [EstablishmentDetailsController::class, 'getPhotos']);
+        Route::get('download-photo/{id}', [EstablishmentDetailsController::class, 'downloadPhoto']);
+        Route::post('upload-photos/{id}', [EstablishmentDetailsController::class, 'uploadPhotos']);
+        Route::put('update-photos/{id}', [EstablishmentDetailsController::class, 'updatePhotos']);
+        Route::delete('delete-photo/{id}', [EstablishmentDetailsController::class, 'deletePhoto']);
+        Route::get('get-documents/{id?}', [EstablishmentDetailsController::class, 'getDocuments']);
+        Route::get('download-document/{id}', [EstablishmentDetailsController::class, 'downloadDocument']);
+        Route::post('upload-documents/{id}', [EstablishmentDetailsController::class, 'uploadDocuments']);
+        Route::put('update-documents/{id}', [EstablishmentDetailsController::class, 'updateDocuments']);
+        Route::delete('delete-document/{id}', [EstablishmentDetailsController::class, 'deleteDocument']);
+        Route::get('get-channels/{company_id}', [EstablishmentDetailsController::class, 'getChannels']);
+        Route::put('update-channels/{company_id}', [EstablishmentDetailsController::class, 'updateChannels']);
+        Route::get('get-specials/{property_id}', [EstablishmentDetailsController::class, 'getSpecials']);
+        Route::post('create-special/{property_id}', [EstablishmentDetailsController::class, 'createSpecial']);
+        Route::put('update-special/{id}', [EstablishmentDetailsController::class, 'updateSpecial']);
+        Route::delete('delete-special/{id}', [EstablishmentDetailsController::class, 'deleteSpecial']);
+    });
 
     Route::prefix('users')->group(function () {
         Route::get('authenticate', [UsersController::class, 'authenticateUser']);
