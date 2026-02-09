@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\PropertiesController;
+use App\Http\Controllers\Api\BookingsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,6 +21,44 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 });
 
 Route::prefix('v2')->group(function () {
+    Route::prefix('bookings')->group(function () {
+        Route::get('checkavail', [BookingsController::class, 'checkAvail']);
+        Route::get('nightsbridgebookings', [BookingsController::class, 'nightsbridgeBookings']);
+        Route::get('nightsbridgebookingsall', [BookingsController::class, 'nightsbridgeBookingsAll']);
+        Route::get('nightsbridgebookingslist', [BookingsController::class, 'nightsbridgeBookingsList']);
+        Route::post('ownerbooking', [BookingsController::class, 'ownerBooking']);
+        Route::post('allocatebooking', [BookingsController::class, 'allocateBooking']);
+        Route::post('guestbooking', [BookingsController::class, 'guestBooking']);
+        Route::post('confirmbooking', [BookingsController::class, 'confirmBooking']);
+        Route::post('cancelbooking', [BookingsController::class, 'cancelBooking']);
+        Route::get('guestdetails', [BookingsController::class, 'guestDetails']);
+        Route::post('updateguestdetails', [BookingsController::class, 'UpdateGuestDetails']);
+        Route::get('get-billing-data/{booking_id}', [BookingsController::class, 'getBillingData']);
+        Route::get('get-mails/{booking_id}', [BookingsController::class, 'getMails']);
+        Route::post('send-mail/{id}', [BookingsController::class, 'sendMail']);
+        Route::get('getreflist/{booking_ref}', [BookingsController::class, 'getReflist']);
+        Route::post('requestchanges', [BookingsController::class, 'requestChanges']);
+        Route::post('confirmchanges', [BookingsController::class, 'confirmChanges']);
+        Route::get('getchanges', [BookingsController::class, 'getChanges']);
+        Route::post('raiseso/{id}', [BookingsController::class, 'RaiseSO']);
+        Route::post('linkso/{id}', [BookingsController::class, 'linkSo']);
+        Route::get('nightsbridgeupdate/{id}', [BookingsController::class, 'NightsbridgeUpdate']);
+        Route::get('allbookings', [BookingsController::class, 'allbookings']);
+        Route::post('mailbookingserror', [BookingsController::class, 'MailBookingError']);
+        Route::post('makepayment', [BookingsController::class, 'MakePayment']);
+        Route::post('confirmpayment', [BookingsController::class, 'ConfirmPayment']);
+        Route::get('getstatements/{userid}', [BookingsController::class, 'GetStatements']);
+        Route::get('sendstatements/{id}', [BookingsController::class, 'SendStatements']);
+        Route::get('updatestatements/{id}', [BookingsController::class, 'UpdateStatements']);
+        Route::get('cancelledquotes', [BookingsController::class, 'getCancelledQuotes']);
+    });
+
+    Route::prefix('linkbookings')->group(function () {
+        Route::post('linkbooking', [BookingsController::class, 'linkBooking']);
+    });
+
+    Route::resource('bookings', BookingsController::class);
+
     Route::prefix('properties')->group(function () {
         Route::get('serp', [PropertiesController::class, 'serp']);
         Route::get('single/{id}', [PropertiesController::class, 'getSingleProperty']);
