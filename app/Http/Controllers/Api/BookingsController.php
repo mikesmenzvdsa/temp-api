@@ -421,17 +421,237 @@ class BookingsController extends Controller
 
     public function nightsbridgeBookings(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $propId = $request->header('propid');
+        $startDate = $request->header('startdate');
+        $endDate = $request->header('enddate');
+
+        if ($propId === null || $startDate === null || $endDate === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing required headers'], 400);
+        }
+
+        $prop = DB::table('virtualdesigns_properties_properties')->where('id', '=', $propId)->first();
+        if (!$prop) {
+            return $this->corsJson(['code' => 404, 'message' => 'Property not found'], 404);
+        }
+
+        $siteSettings = DB::table('virtualdesigns_settings_settings')->first();
+        if (!$siteSettings || (int) $siteSettings->nb_active !== 1) {
+            return $this->corsJson('Nightsbridge Disabled', 400);
+        }
+
+        $payload = [
+            'bbid' => (int) $prop->nb_id,
+            'startdate' => date('Y-m-d', strtotime($startDate)),
+            'enddate' => date('Y-m-d', strtotime($endDate)),
+            'showrates' => true,
+            'strictsearch' => false,
+        ];
+
+        $response = $this->nightsbridgePost('https://www.nightsbridge.co.za/bridge/api/5.0/availgrid', $payload);
+        if (!$response || !isset($response->success) || $response->success === false) {
+            $errorMessage = isset($response->error->message) ? $response->error->message : 'No data received from Nightsbridge';
+            return $this->corsJson($errorMessage, 400);
+        }
+
+        $availData = null;
+        $roomData = null;
+        if (isset($response->data)) {
+            if ((int) $prop->as_room === 1 && $prop->bbrtid) {
+                $roomTypes = $response->data->roomtypes ?? [];
+                foreach ($roomTypes as $roomType) {
+                    if (isset($roomType->rtid) && (string) $roomType->rtid === (string) $prop->bbrtid) {
+                        $roomData = $roomType;
+                        break;
+                    }
+                }
+                if ($roomData && isset($roomData->availability)) {
+                    $availData = $roomData->availability;
+                }
+            } else {
+                $availData = $response->data->roomtypes ?? null;
+            }
+        }
+
+        if ($availData === null) {
+            return $this->corsJson('No data received from Nightsbridge', 404);
+        }
+
+        if (is_array($availData)) {
+            $dateCursor = date('Y-m-d', strtotime($startDate));
+            foreach ($availData as $item) {
+                if (is_object($item)) {
+                    $item->date = $dateCursor;
+                    $item->capacity = $roomData->maxoccupancy ?? $prop->capacity ?? null;
+                }
+                $dateCursor = date('Y-m-d', strtotime($dateCursor . ' + 1 days'));
+            }
+        }
+
+        return $this->corsJson($availData, 200);
     }
 
     public function nightsbridgeBookingsAll(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $startDate = $request->header('startdate');
+        $endDate = $request->header('enddate');
+
+        if ($startDate === null || $endDate === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing required headers'], 400);
+        }
+
+        $siteSettings = DB::table('virtualdesigns_settings_settings')->first();
+        if (!$siteSettings || (int) $siteSettings->nb_active !== 1) {
+            return $this->corsJson('Nightsbridge Disabled', 400);
+        }
+
+        $properties = DB::table('virtualdesigns_properties_properties')
+            ->where('is_live', '=', 1)
+            ->whereNull('deleted_at')
+            ->get();
+
+        $availData = [];
+        foreach ($properties as $index => $prop) {
+            $payload = [
+                'bbid' => (int) $prop->nb_id,
+                'startdate' => date('Y-m-d', strtotime($startDate)),
+                'enddate' => date('Y-m-d', strtotime($endDate)),
+                'showrates' => true,
+                'strictsearch' => false,
+            ];
+
+            $response = $this->nightsbridgePost('https://www.nightsbridge.co.za/bridge/api/5.0/availgrid', $payload);
+            if (!$response || !isset($response->success) || $response->success === false) {
+                $availData[$index]['propid'] = $prop->id;
+                $availData[$index]['avail'] = isset($response->error->message) ? $response->error->message : 'No data received from Nightsbridge';
+                continue;
+            }
+
+            $propAvail = null;
+            if (isset($response->data)) {
+                if ((int) $prop->as_room === 1 && $prop->bbrtid) {
+                    $roomTypes = $response->data->roomtypes ?? [];
+                    foreach ($roomTypes as $roomType) {
+                        if (isset($roomType->rtid) && (string) $roomType->rtid === (string) $prop->bbrtid) {
+                            $propAvail = $roomType->availability ?? null;
+                            break;
+                        }
+                    }
+                } else {
+                    $propAvail = $response->data->roomtypes ?? null;
+                }
+            }
+
+            $availData[$index]['propid'] = $prop->id;
+            $availData[$index]['avail'] = $propAvail ?? 'No data received from Nightsbridge';
+        }
+
+        if (!empty($availData)) {
+            foreach ($availData as $idx => $data) {
+                $dateCursor = date('Y-m-d', strtotime($startDate));
+                if (isset($data['avail']) && is_array($data['avail'])) {
+                    foreach ($data['avail'] as $avItem) {
+                        if (is_object($avItem)) {
+                            $avItem->date = $dateCursor;
+                        } elseif (is_array($avItem)) {
+                            $avItem['date'] = $dateCursor;
+                        }
+                        $dateCursor = date('Y-m-d', strtotime($dateCursor . ' + 1 days'));
+                    }
+                }
+                $availData[$idx] = $data;
+            }
+            return $this->corsJson($availData, 200);
+        }
+
+        return $this->corsJson('No data received from Nightsbridge', 404);
     }
 
     public function nightsbridgeBookingsList(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $startDate = $request->header('startdate') ?? $request->input('startdate');
+        $endDate = $request->header('enddate') ?? $request->input('enddate');
+        $propIdsHeader = $request->header('propids') ?? $request->input('propids');
+
+        if ($startDate === null || $endDate === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing required dates'], 400);
+        }
+
+        if (strtotime($startDate) < strtotime(date('Y-m-d'))) {
+            $startDate = date('Y-m-d');
+        }
+
+        $propIds = [];
+        if ($propIdsHeader !== null) {
+            $propIds = array_filter(array_map('trim', explode(',', (string) $propIdsHeader)));
+        }
+
+        $propertiesQuery = DB::table('virtualdesigns_properties_properties')->whereNull('deleted_at');
+        if (!empty($propIds)) {
+            $propertiesQuery->whereIn('id', $propIds);
+        }
+        $properties = $propertiesQuery->get();
+
+        $siteSettings = DB::table('virtualdesigns_settings_settings')->first();
+        $nbActive = $siteSettings && (int) $siteSettings->nb_active === 1;
+
+        $availData = [];
+        foreach ($properties as $index => $prop) {
+            $propAvail = null;
+            if ($prop->pricelabs_id !== null) {
+                $propAvail = DB::connection('remote')->table('price_lists')
+                    ->where('pl_id', '=', $prop->pricelabs_id)
+                    ->where('date', '>=', $startDate)
+                    ->where('date', '<=', $endDate)
+                    ->get();
+            } elseif ($nbActive) {
+                $payload = [
+                    'bbid' => (int) $prop->nb_id,
+                    'startdate' => date('Y-m-d', strtotime($startDate)),
+                    'enddate' => date('Y-m-d', strtotime($endDate)),
+                    'showrates' => true,
+                    'strictsearch' => false,
+                ];
+                $response = $this->nightsbridgePost('https://www.nightsbridge.co.za/bridge/api/5.0/availgrid', $payload);
+                if ($response && isset($response->success) && $response->success === true) {
+                    if ((int) $prop->as_room === 1 && $prop->bbrtid && isset($response->data->roomtypes)) {
+                        foreach ($response->data->roomtypes as $roomType) {
+                            if (isset($roomType->rtid) && (string) $roomType->rtid === (string) $prop->bbrtid) {
+                                $propAvail = $roomType->availability ?? null;
+                                break;
+                            }
+                        }
+                    } else {
+                        $propAvail = $response->data->roomtypes ?? null;
+                    }
+                }
+            }
+
+            $availData[$index]['propid'] = $prop->id;
+            $availData[$index]['avail'] = $propAvail;
+        }
+
+        foreach ($availData as $idx => $data) {
+            if (isset($data['avail']) && is_array($data['avail'])) {
+                $dateCursor = date('Y-m-d', strtotime($startDate));
+                foreach ($data['avail'] as $avItem) {
+                    if (is_object($avItem)) {
+                        $avItem->date = $dateCursor;
+                    } elseif (is_array($avItem)) {
+                        $avItem['date'] = $dateCursor;
+                    }
+                    $dateCursor = date('Y-m-d', strtotime($dateCursor . ' + 1 days'));
+                }
+            }
+            $availData[$idx] = $data;
+        }
+
+        return $this->corsJson($availData, 200);
     }
 
     public function ownerBooking(Request $request)
@@ -1303,82 +1523,1170 @@ class BookingsController extends Controller
 
     public function guestDetails(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $bookingId = $request->header('bookingid') ?? $request->input('bookingid');
+        if ($bookingId === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing bookingid'], 400);
+        }
+
+        $guestData = DB::table('virtualdesigns_erpbookings_guestinfo')
+            ->where('booking_id', '=', $bookingId)
+            ->select(
+                'id',
+                'guest_name',
+                'guest_id_no',
+                'guest_contact',
+                'guest_no',
+                'eta',
+                'etd',
+                'flight_number',
+                'bank_ac_name',
+                'bank_ac_no',
+                'bank_name',
+                'bank_code',
+                'no_smoking',
+                'noise_policy',
+                'fair_usage_policy',
+                'breakage_policy',
+                'terms_conditions',
+                'booking_id',
+                'bank_type',
+                'swift_code',
+                'pay_type',
+                'guest_alternative_email_address',
+                'guest_id as guest_id_doc',
+                'other_guests_data'
+            )
+            ->first();
+
+        if ($guestData !== null) {
+            $guestData->no_smoking = (int) $guestData->no_smoking;
+            $guestData->noise_policy = (int) $guestData->noise_policy;
+            $guestData->fair_usage_policy = (int) $guestData->fair_usage_policy;
+            $guestData->breakage_policy = (int) $guestData->breakage_policy;
+            $guestData->terms_conditions = (int) $guestData->terms_conditions;
+        }
+
+        return $this->corsJson($guestData, 200);
     }
 
     public function UpdateGuestDetails(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $payload = (object) $request->all();
+        if (!isset($payload->id)) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing id'], 400);
+        }
+
+        $guestData = DB::table('virtualdesigns_erpbookings_guestinfo')->where('id', '=', $payload->id)->first();
+        if (!$guestData) {
+            return $this->corsJson(['code' => 404, 'message' => 'Guest record not found'], 404);
+        }
+
+        $changeUser = $request->input('change_user');
+        if ($changeUser !== null) {
+            $fields = [
+                'guest_name',
+                'guest_id_no',
+                'guest_contact',
+                'guest_no',
+                'eta',
+                'etd',
+                'flight_number',
+                'bank_ac_name',
+                'bank_ac_no',
+                'bank_name',
+                'bank_code',
+                'no_smoking',
+                'noise_policy',
+                'fair_usage_policy',
+                'breakage_policy',
+                'terms_conditions',
+                'bank_type',
+                'swift_code',
+                'pay_type',
+                'guest_alternative_email_address',
+                'guest_id',
+                'other_guests_data',
+            ];
+
+            foreach ($fields as $field) {
+                if (property_exists($payload, $field) && $guestData->{$field} != $payload->{$field}) {
+                    DB::table('virtualdesigns_changes_changes')->insert([
+                        'user_id' => $changeUser,
+                        'db_table' => 'virtualdesigns_erpbookings_guestinfo',
+                        'record_id' => $guestData->id,
+                        'field' => $field,
+                        'old' => $guestData->{$field},
+                        'new' => $payload->{$field},
+                        'change_date' => now(),
+                    ]);
+                }
+            }
+        }
+
+        $updateFields = [
+            'guest_name',
+            'guest_id_no',
+            'guest_contact',
+            'guest_no',
+            'eta',
+            'etd',
+            'flight_number',
+            'bank_ac_name',
+            'bank_ac_no',
+            'bank_name',
+            'bank_code',
+            'no_smoking',
+            'noise_policy',
+            'fair_usage_policy',
+            'breakage_policy',
+            'terms_conditions',
+            'bank_type',
+            'swift_code',
+            'pay_type',
+            'guest_alternative_email_address',
+            'guest_id',
+            'other_guests_data',
+        ];
+
+        $updates = [];
+        foreach ($updateFields as $field) {
+            if (property_exists($payload, $field)) {
+                $updates[$field] = $payload->{$field};
+            }
+        }
+
+        if (!empty($updates)) {
+            DB::table('virtualdesigns_erpbookings_guestinfo')->where('id', '=', $payload->id)->update($updates);
+        }
+
+        $guestData = DB::table('virtualdesigns_erpbookings_guestinfo')->where('id', '=', $payload->id)->first();
+
+        return $this->corsJson($guestData, 200);
     }
 
     public function getBillingData(Request $request, $bookingId)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        try {
+            $fees = DB::table('virtualdesigns_erpbookings_fees')->where('booking_id', '=', $bookingId)->get()->toArray();
+            $damage = DB::table('virtualdesigns_erpbookings_damage')->where('booking_id', '=', $bookingId)->take(1)->get()->toArray();
+            $channels = DB::table('virtualdesigns_channels_providers')->get()->toArray();
+            $booking = DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->first();
+            $guestData = DB::table('virtualdesigns_erpbookings_guestinfo')->where('booking_id', '=', $bookingId)->first();
+
+            if ($guestData !== null) {
+                $guestData->no_smoking = (int) $guestData->no_smoking;
+                $guestData->noise_policy = (int) $guestData->noise_policy;
+                $guestData->fair_usage_policy = (int) $guestData->fair_usage_policy;
+                $guestData->breakage_policy = (int) $guestData->breakage_policy;
+                $guestData->terms_conditions = (int) $guestData->terms_conditions;
+            }
+
+            $balanceDue = $booking->balance_due ?? null;
+            $bdActive = $booking->bd_active ?? null;
+
+            $invoice = null;
+            if (isset($booking->guest_invoice)) {
+                $propRec = DB::table('virtualdesigns_properties_properties')->where('id', '=', $booking->property_id)->first();
+                if ($propRec && (int) $propRec->country_id === 846) {
+                    $invoice = 'https://go.xero.com/app/!b6sP0/invoicing/view/' . $booking->guest_invoice;
+                } else {
+                    $invoice = 'https://go.xero.com/app/!25F0!/invoicing/view/' . $booking->guest_invoice;
+                }
+            }
+
+            $response = [
+                'fees' => $fees,
+                'damage' => $damage,
+                'channels' => $channels,
+                'balance_due' => $balanceDue,
+                'bd_active' => $bdActive,
+                'guest_invoice' => $invoice,
+                'guest_data' => $guestData,
+                'non_refundable' => $booking->non_refundable ?? null,
+                'vc_date' => $booking->vc_date ?? null,
+            ];
+
+            return $this->corsJson($response, 200);
+        } catch (\Throwable $th) {
+            return $this->corsJson($th->getMessage(), 500);
+        }
     }
 
     public function getMails(Request $request, $bookingId)
     {
-        return $this->notImplemented();
+        try {
+            $mails = DB::table('virtualdesigns_bookings_mails')
+                ->where('virtualdesigns_bookings_mails.booking_id', $bookingId)
+                ->join('users', 'virtualdesigns_bookings_mails.user_id', '=', 'users.id')
+                ->select('virtualdesigns_bookings_mails.*', 'users.name as user_name')
+                ->orderBy('created_at', 'DESC')
+                ->get();
+
+            return $this->corsJson($mails, 200);
+        } catch (\Throwable $th) {
+            return $this->corsJson($th->getMessage(), 500);
+        }
     }
 
     public function sendMail(Request $request, $id)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $payload = $request->all();
+        $templateName = $request->input('template_name');
+        if ($templateName === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing template_name'], 400);
+        }
+
+        $messageType = $payload['message_type'] ?? 1;
+        if ((int) $messageType === 2) {
+            return $this->corsJson(['code' => 200, 'message' => 'Whatsapp message recorded'], 200);
+        }
+
+        $userId = $request->header('userid') ?? $request->header('Userid') ?? $payload['user_id'] ?? null;
+        $mailVars = $payload['mail_vars'] ?? $payload;
+
+        DB::table('virtualdesigns_bookings_mails')->insert([
+            'booking_id' => $id,
+            'user_id' => $userId,
+            'template_name' => $templateName,
+            'message_type' => $messageType,
+            'mail_vars' => json_encode($mailVars),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        if ($templateName === 'Damage Deposit Template') {
+            DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $id)->update(['damage_sent' => 1]);
+        }
+
+        return $this->corsJson(['code' => 200, 'message' => 'Recorded'], 200);
     }
 
     public function getReflist(Request $request, $bookingRef)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        try {
+            $refs = DB::table('virtualdesigns_erpbookings_erpbookings')
+                ->where('booking_ref', 'like', '%' . $bookingRef . '%')
+                ->pluck('booking_ref');
+
+            return $this->corsJson($refs, 200);
+        } catch (\Throwable $th) {
+            return $this->corsJson($th->getMessage(), 500);
+        }
     }
 
     public function requestChanges(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $bookingId = $request->input('booking_id');
+        if ($bookingId === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing booking_id'], 400);
+        }
+
+        $booking = DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->first();
+        if (!$booking) {
+            return $this->corsJson(['code' => 404, 'message' => 'Booking not found'], 404);
+        }
+
+        $notes = $request->input('notes');
+
+        DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->update([
+            'pending_update' => 1,
+            'updated_at' => now(),
+        ]);
+
+        $changes = [];
+        $fields = [
+            'property_id',
+            'channel',
+            'arrival_date',
+            'departure_date',
+            'adults',
+            'children',
+            'booking_amount',
+            'client_name',
+            'client_phone',
+            'client_mobile',
+            'client_email',
+        ];
+
+        foreach ($fields as $field) {
+            if ($request->has($field)) {
+                $changes[$field] = [
+                    'old' => $booking->{$field},
+                    'new' => $request->input($field),
+                ];
+            }
+        }
+
+        $logId = DB::table('virtualdesigns_nightsbridgewebhook_logs')->insertGetId([
+            'mode' => 'update',
+            'status' => 'Success-Website',
+            'message' => json_encode($changes),
+            'booking_id' => $bookingId,
+            'notes' => $notes,
+            'completed' => 0,
+        ]);
+
+        $log = DB::table('virtualdesigns_nightsbridgewebhook_logs')->where('id', '=', $logId)->first();
+
+        return $this->corsJson($log, 200);
     }
 
     public function confirmChanges(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $type = $request->header('type') ?? $request->input('type');
+        $notes = $request->input('notes');
+
+        if ($type === 'cancel') {
+            $bookingId = $request->input('bid') ?? $request->input('booking_id');
+            if ($bookingId === null) {
+                return $this->corsJson(['code' => 400, 'message' => 'Missing booking id'], 400);
+            }
+
+            $booking = DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->first();
+            if (!$booking) {
+                return $this->corsJson(['code' => 404, 'message' => 'Booking not found'], 404);
+            }
+
+            $tasks = DB::table('virtualdesigns_cleans_cleans')
+                ->where('booking_id', '=', $bookingId)
+                ->where('clean_date', '>=', date('Y-m-d'))
+                ->get();
+            $laundries = DB::table('virtualdesigns_laundry_laundry')
+                ->where('booking_id', '=', $bookingId)
+                ->where('action_date', '>=', date('Y-m-d'))
+                ->get();
+
+            DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->update([
+                'status' => 1,
+                'pending_cancel' => 0,
+                'reason_cancelled' => $request->input('reason'),
+                'date_cancelled' => $booking->date_cancelled ?? now(),
+                'updated_at' => now(),
+            ]);
+
+            foreach ($tasks as $task) {
+                DB::table('virtualdesigns_cleans_cleans')->where('id', '=', $task->id)->update(['status' => 1]);
+            }
+
+            foreach ($laundries as $laundry) {
+                DB::table('virtualdesigns_laundry_laundry')->where('id', '=', $laundry->id)->update(['status' => 1]);
+            }
+
+            return $this->corsJson(['code' => 200, 'message' => 'Success'], 200);
+        }
+
+        if ($type === 'update') {
+            $bookingId = $request->input('bid') ?? $request->input('booking_id');
+            $changeId = $request->input('cid');
+
+            if ($bookingId !== null) {
+                DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->update([
+                    'pending_update' => 0,
+                    'updated_at' => now(),
+                ]);
+            }
+
+            if ($changeId !== null) {
+                DB::table('virtualdesigns_nightsbridgewebhook_logs')->where('id', '=', $changeId)->update([
+                    'completed' => 1,
+                    'notes' => $notes,
+                ]);
+            }
+
+            return $this->corsJson(['code' => 200, 'message' => 'Success'], 200);
+        }
+
+        return $this->corsJson(['code' => 400, 'message' => 'Invalid change type'], 400);
     }
 
     public function getChanges(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $type = $request->header('type') ?? $request->input('type') ?? 'updates';
+
+        try {
+            if ($type === 'updates') {
+                $data = DB::table('virtualdesigns_erpbookings_erpbookings as booking')
+                    ->join('virtualdesigns_properties_properties as property', 'booking.property_id', '=', 'property.id')
+                    ->join('virtualdesigns_nightsbridgewebhook_logs as log', function ($join) {
+                        $join->on('booking.id', '=', 'log.booking_id')
+                            ->where('log.mode', '=', 'update')
+                            ->where('log.completed', '=', 0);
+                    })
+                    ->where('booking.pending_update', '=', 1)
+                    ->select(
+                        'booking.*',
+                        'log.message as changes',
+                        'log.completed',
+                        'log.id as cid',
+                        'log.notes as change_notes',
+                        'property.name as property_name'
+                    )
+                    ->get();
+
+                foreach ($data as $booking) {
+                    $changesArray = (array) json_decode($booking->changes);
+                    foreach (array_keys($changesArray) as $changeKey) {
+                        $label = ucwords(str_replace('_', ' ', $changeKey));
+                        $changesArray[$changeKey]->lable = $label;
+                    }
+                    $booking->changes = json_encode($changesArray);
+                }
+
+                return $this->corsJson($data, 200);
+            }
+
+            if ($type === 'cancellations') {
+                $data = DB::table('virtualdesigns_erpbookings_erpbookings as booking')
+                    ->join('virtualdesigns_properties_properties as property', 'booking.property_id', '=', 'property.id')
+                    ->where('booking.pending_cancel', '=', 1)
+                    ->select('booking.*', 'property.name as property_name')
+                    ->get();
+
+                return $this->corsJson($data, 200);
+            }
+
+            return $this->corsJson(['code' => 400, 'message' => 'Invalid change type'], 400);
+        } catch (\Throwable $th) {
+            return $this->corsJson($th->getMessage(), 500);
+        }
     }
 
     public function RaiseSO(Request $request, $id)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $type = $request->input('type', 'booking');
+        $booking = DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $id)->first();
+        if (!$booking) {
+            return $this->corsJson(['code' => 404, 'message' => 'Booking not found'], 404);
+        }
+
+        $prop = DB::table('virtualdesigns_properties_properties')->where('id', '=', $booking->property_id)->first();
+        $salesperson = $booking->made_by ? DB::table('users')->where('id', '=', $booking->made_by)->first() : null;
+
+        $startTs = strtotime($booking->arrival_date);
+        $endTs = strtotime($booking->departure_date);
+        $nights = max(1, (int) round(($endTs - $startTs) / 86400));
+        $people = (int) $booking->adults + (int) $booking->children;
+        $pricePerNight = $nights > 0 ? (float) $booking->booking_amount / $nights : (float) $booking->booking_amount;
+
+        if ($type === 'booking') {
+            $tasks = DB::table('virtualdesigns_cleans_cleans')
+                ->where('booking_id', '=', $booking->id)
+                ->where('status', '=', 0)
+                ->whereNull('deleted_at')
+                ->get();
+            $fees = DB::table('virtualdesigns_erpbookings_fees')
+                ->where('booking_id', '=', $booking->id)
+                ->get()
+                ->toArray();
+
+            foreach ($fees as $fee) {
+                $fee->price = $fee->price ?? 0;
+                $fee->unit_price = $fee->unit_price ?? 0;
+            }
+
+            $clientName = explode(' ', trim((string) $booking->client_name), 2);
+
+            $payload = [
+                'db_booking_id' => $booking->id,
+                'propid' => $prop ? $prop->id : null,
+                'name' => $clientName[0] ?? '',
+                'surname' => $clientName[1] ?? '',
+                'email' => $booking->client_email,
+                'phone' => $booking->client_phone,
+                'arrival' => $booking->arrival_date,
+                'departure' => $booking->departure_date,
+                'nights' => $nights,
+                'people' => $people,
+                'adults' => $booking->adults,
+                'children' => $booking->children,
+                'pricePerNight' => $pricePerNight,
+                'notes' => $booking->payment_notes,
+                'channel' => $booking->channel,
+                'fees' => $fees,
+                'salesperson_name' => $salesperson ? $salesperson->name . ' ' . $salesperson->surname : null,
+                'salesperson_email' => $salesperson ? $salesperson->email : null,
+                'user_id' => $booking->made_by,
+                'booking_type' => $booking->so_type,
+                'internal_ref' => $booking->booking_ref,
+                'ha_comm' => $booking->bhr_com,
+                'tp_comm' => $booking->third_party_com,
+                'total_comm' => $booking->total_com,
+                'tasks' => $tasks,
+                'welcome_pack' => $booking->no_pack,
+                'linen' => $booking->no_linen,
+                'virtual_card' => $booking->virtual_card,
+                'mode' => 'create',
+            ];
+
+            return $this->corsJson(['booking' => $booking, 'payload' => $payload], 200);
+        }
+
+        if ($type === 'damage') {
+            $damage = DB::table('virtualdesigns_erpbookings_damage')->where('booking_id', '=', $booking->id)->first();
+            $guestDetails = DB::table('virtualdesigns_erpbookings_guestinfo')->where('booking_id', '=', $booking->id)->first();
+            $clientName = explode(' ', trim((string) $booking->client_name), 2);
+
+            $payload = [
+                'propid' => $booking->property_id,
+                'name' => $clientName[0] ?? '',
+                'surname' => $clientName[1] ?? '',
+                'email' => $booking->client_email,
+                'phone' => $booking->client_phone,
+                'arrival' => $booking->arrival_date,
+                'departure' => $booking->departure_date,
+                'people' => $people,
+                'adults' => $booking->adults,
+                'children' => $booking->children,
+                'notes' => $booking->booking_notes,
+                'channel' => $booking->channel,
+                'salesperson_name' => $salesperson ? $salesperson->name . ' ' . $salesperson->surname : null,
+                'salesperson_email' => $salesperson ? $salesperson->email : null,
+                'user_id' => $booking->made_by,
+                'internal_ref' => $booking->booking_ref . '-BD',
+                'amount' => $damage ? $damage->amount : null,
+                'bank_ac_name' => $guestDetails->bank_ac_name ?? null,
+                'bank_ac_no' => $guestDetails->bank_ac_no ?? null,
+                'bank_name' => $guestDetails->bank_name ?? null,
+                'bank_code' => $guestDetails->bank_code ?? null,
+                'bank_type' => $guestDetails->bank_type ?? null,
+                'mode' => 'damage',
+                'damage_id' => $damage ? $damage->id : null,
+            ];
+
+            return $this->corsJson(['booking' => $booking, 'payload' => $payload], 200);
+        }
+
+        return $this->corsJson(['code' => 400, 'message' => 'Invalid type'], 400);
     }
 
     public function linkSo(Request $request, $id)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $type = $request->input('type');
+        $soNumber = $request->input('so_number');
+        if ($type === null || $soNumber === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing type or so_number'], 400);
+        }
+
+        if ($type === 'booking') {
+            DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $id)->update([
+                'so_number' => $soNumber,
+                'updated_at' => now(),
+            ]);
+            $booking = DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $id)->first();
+            return $this->corsJson($booking, 200);
+        }
+
+        if ($type === 'damage') {
+            DB::table('virtualdesigns_erpbookings_damage')->where('booking_id', '=', $id)->update([
+                'so_number' => $soNumber,
+            ]);
+            $damage = DB::table('virtualdesigns_erpbookings_damage')->where('booking_id', '=', $id)->first();
+            return $this->corsJson($damage, 200);
+        }
+
+        return $this->corsJson(['code' => 400, 'message' => 'Invalid type'], 400);
     }
 
     public function NightsbridgeUpdate(Request $request, $id)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $booking = DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $id)->first();
+        if (!$booking) {
+            return $this->corsJson(['code' => 404, 'message' => 'Booking not found'], 404);
+        }
+
+        if (!empty($booking->nightsbridge_ref)) {
+            try {
+                Http::timeout(15)->get('https://hostagents.co.za/' . $booking->nightsbridge_ref . '?mode=update');
+            } catch (\Throwable $th) {
+            }
+        }
+
+        return $this->corsJson($booking, 200);
     }
 
     public function allbookings(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $userId = $request->header('userid');
+        if ($userId === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing userid'], 400);
+        }
+
+        $quotesOnly = $request->header('quotesonly');
+        $groupId = DB::table('users_groups')->where('user_id', '=', $userId)->value('user_group_id');
+
+        $baseQuery = DB::table('virtualdesigns_erpbookings_erpbookings as booking')
+            ->leftJoin('virtualdesigns_properties_properties as property', 'booking.property_id', '=', 'property.id')
+            ->leftJoin('users as salesperson', 'booking.made_by', '=', 'salesperson.id')
+            ->leftJoin('users as manager', 'property.user_id', '=', 'manager.id')
+            ->leftJoin('users as cancelled_by', 'booking.cancelled_by', '=', 'cancelled_by.id')
+            ->leftJoin('virtualdesigns_locations_locations as suburb', 'property.suburb_id', '=', 'suburb.id')
+            ->leftJoin('virtualdesigns_erpbookings_guestinfo as guestinfo', 'guestinfo.booking_id', '=', 'booking.id')
+            ->whereNull('booking.deleted_at');
+
+        if ((int) $groupId === 1) {
+            $baseQuery->where('property.owner_id', '=', $userId);
+            $baseQuery->where('booking.quote_confirmed', '=', 1);
+        } elseif ((int) $groupId === 3) {
+            $baseQuery->where('property.user_id', '=', $userId);
+        } elseif ((int) $groupId === 5) {
+            $baseQuery->where('property.bodycorp_id', '=', $userId);
+        } elseif ((int) $groupId === 2) {
+            if ($request->header('cancelledquotes')) {
+                $baseQuery->where('booking.status', '=', 1)->where('booking.quote_confirmed', '!=', 1);
+                if ($request->header('cancelstart')) {
+                    $baseQuery->where('booking.date_cancelled', '>=', $request->header('cancelstart') . ' 00:00:00');
+                }
+                if ($request->header('cancelend')) {
+                    $baseQuery->where('booking.date_cancelled', '<=', $request->header('cancelend') . ' 23:59:59');
+                }
+            }
+        }
+
+        if ($quotesOnly === 'true') {
+            $baseQuery->where('booking.quote_confirmed', '!=', 1)
+                ->where('booking.status', '!=', 1);
+        }
+
+        if ($request->header('propid')) {
+            $baseQuery->where('booking.property_id', '=', $request->header('propid'));
+        }
+
+        if ($request->header('arrivalstart')) {
+            $baseQuery->where('booking.arrival_date', '>=', date('Y-m-d', strtotime($request->header('arrivalstart'))));
+        }
+        if ($request->header('arrivalend')) {
+            $baseQuery->where('booking.arrival_date', '<=', date('Y-m-d', strtotime($request->header('arrivalend'))));
+        }
+        if ($request->header('todayarrival')) {
+            $baseQuery->where('booking.arrival_date', '=', date('Y-m-d', strtotime($request->header('todayarrival'))));
+        }
+        if ($request->header('todaydeparture')) {
+            $baseQuery->where('booking.departure_date', '=', date('Y-m-d', strtotime($request->header('todaydeparture'))));
+        }
+        if ($request->header('istoday')) {
+            $today = date('Y-m-d');
+            $baseQuery->where('booking.arrival_date', '<', $today)->where('booking.departure_date', '>', $today);
+        }
+
+        $bookings = $baseQuery->select(
+            'booking.id',
+            'booking.bd_active',
+            'booking.booking_ref',
+            'booking.arrival_date',
+            'booking.departure_date',
+            'booking.virtual_card',
+            'booking.balance_due',
+            'booking.guest_invoice',
+            'booking.payment_notes',
+            'booking.so_type',
+            'property.name as prop_name',
+            'property.accounting_name as accounting_name',
+            'property.country_id as country_id',
+            'booking.client_name',
+            'booking.channel',
+            'booking.booking_amount',
+            'booking.created_at as date_quoted',
+            'booking.date_confirmed',
+            'booking.quote_confirmed',
+            'salesperson.name as salesperson_name',
+            'salesperson.surname as salesperson_surname',
+            'booking.status',
+            'suburb.name as suburb',
+            'manager.name as manager_name',
+            'manager.surname as manager_surname',
+            'cancelled_by.name as cancelled_by_name',
+            'cancelled_by.surname as cancelled_by_surname',
+            'booking.so_number',
+            'booking.client_phone',
+            'booking.client_mobile',
+            'booking.client_email',
+            'booking.booking_notes',
+            'booking.room_name',
+            'booking.pay_on_arrival',
+            'booking.no_review',
+            'booking.no_linen',
+            'booking.no_pack',
+            'booking.website_from',
+            'booking.total_com',
+            'booking.bhr_com',
+            'booking.third_party_com',
+            'property.id as property_id',
+            'guestinfo.bank_ac_name',
+            'guestinfo.bank_ac_no',
+            'guestinfo.bank_name',
+            'guestinfo.bank_code',
+            'guestinfo.bank_type',
+            'guestinfo.swift_code',
+            'guestinfo.guest_id as guest_id_doc'
+        )->get();
+
+        foreach ($bookings as $booking) {
+            $booking->cancelled_by = trim(($booking->cancelled_by_name ?? '') . ' ' . ($booking->cancelled_by_surname ?? ''));
+            $booking->paid = ($booking->balance_due ?? 0) <= 0 ? 1 : 0;
+            $booking->processed = $booking->guest_invoice ? 1 : 0;
+            $startTs = strtotime($booking->arrival_date);
+            $endTs = strtotime($booking->departure_date);
+            $booking->nights = (int) round(($endTs - $startTs) / 86400);
+            if ((int) $booking->quote_confirmed !== 1 && (int) $booking->status !== 1) {
+                $startTs = strtotime($booking->date_quoted);
+                $endTs = strtotime(date('Y-m-d'));
+                $booking->days_pending = (int) round(($endTs - $startTs) / 86400) + 1;
+            }
+        }
+
+        return $this->corsJson($bookings, 200);
     }
 
     public function MailBookingError(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $payload = $request->all();
+        try {
+            DB::table('virtualdesigns_rentalsunited_log')->insert([
+                'request' => json_encode($payload),
+                'response' => 'Booking error notification received',
+                'response_id' => 500,
+            ]);
+        } catch (\Throwable $th) {
+            return $this->corsJson($th->getMessage(), 500);
+        }
+
+        return $this->corsJson(['code' => 200, 'message' => 'Logged'], 200);
     }
 
     public function MakePayment(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $siteName = $request->input('SiteName');
+        $amount = (float) $request->input('Amount');
+        $arrival = date('Y-m-d', strtotime((string) $request->input('Arrival')));
+        $departure = date('Y-m-d', strtotime((string) $request->input('Departure')));
+        $adults = (int) $request->input('Adults');
+        $children = (int) $request->input('Children');
+        $propertyRuId = $request->input('PropertyId');
+        $customerName = $request->input('CustomerName');
+        $customerSurname = $request->input('CustomerSurname');
+        $customerEmail = $request->input('CustomerEmail');
+        $customerPhoneNumber = $request->input('CustomerPhoneNumber');
+        $successUrl = $request->input('SuccessUrl');
+        $failUrl = $request->input('FailUrl');
+
+        $prop = DB::table('virtualdesigns_properties_properties')->where('rentals_united_id', '=', $propertyRuId)->first();
+        if (!$prop) {
+            return $this->corsJson(['code' => 404, 'message' => 'Property not found'], 404);
+        }
+
+        $currencyRec = null;
+        if ($prop->pricelabs_id !== null) {
+            $currencyRec = DB::connection('remote')->table('price_lists')
+                ->where('pl_id', '=', $prop->pricelabs_id)
+                ->select('currency')
+                ->first();
+        }
+        $currency = $currencyRec->currency ?? 'ZAR';
+
+        $totalRands = $amount;
+        $totalDollars = $amount;
+        $totalEuros = $amount;
+        $totalMur = $amount;
+
+        if ($currency === 'EUR') {
+            $totalRands = $amount * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'EUR/ZAR')->value('rate');
+            $totalDollars = $amount * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'EUR/USD')->value('rate');
+            $totalMur = $amount * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'EUR/MUR')->value('rate');
+            $totalEuros = $amount;
+        } elseif ($currency === 'USD') {
+            $totalRands = $amount * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/ZAR')->value('rate');
+            $totalEuros = $amount * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/EUR')->value('rate');
+            $totalMur = $amount * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
+            $totalDollars = $amount;
+        } elseif ($currency === 'ZAR') {
+            $totalDollars = $amount * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'ZAR/USD')->value('rate');
+            $totalEuros = $amount * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'ZAR/EUR')->value('rate');
+            $totalMur = $totalDollars * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
+            $totalRands = $amount;
+        }
+
+        $bookingId = DB::table('virtualdesigns_erpbookings_erpbookings')->insertGetId([
+            'property_id' => $prop->id,
+            'arrival_date' => $arrival,
+            'departure_date' => $departure,
+            'client_name' => trim($customerName . ' ' . $customerSurname),
+            'client_phone' => $customerPhoneNumber,
+            'client_mobile' => $customerPhoneNumber,
+            'client_email' => $customerEmail,
+            'created_at' => now(),
+            'status' => 1,
+            'so_type' => 'booking',
+            'channel' => 'Host Agents',
+            'total_com' => $prop->comm_percent,
+            'bhr_com' => $prop->comm_percent,
+            'booking_amount' => $amount,
+            'total_rands' => $totalRands,
+            'total_euros' => $totalEuros,
+            'total_dollars' => $totalDollars,
+            'total_mur' => $totalMur,
+            'no_guests' => $adults + $children,
+            'adults' => $adults,
+            'children' => $children,
+            'website_from' => $siteName,
+        ]);
+
+        DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->update([
+            'booking_ref' => $bookingId . 'HA',
+        ]);
+
+        $booking = DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->first();
+
+        $lineMur = 0.0;
+        if ($prop->booking_fee > 0) {
+            if ($currency === 'EUR') {
+                $lineMur = $prop->booking_fee * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'EUR/MUR')->value('rate');
+            } elseif ($currency === 'USD') {
+                $lineMur = $prop->booking_fee * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
+            } elseif ($currency === 'ZAR') {
+                $lineMur = $prop->booking_fee * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'ZAR/USD')->value('rate');
+                $lineMur = $lineMur * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
+            }
+            DB::table('virtualdesigns_erpbookings_fees')->insert([
+                'description' => 'Booking Fee',
+                'arrival_date' => $arrival,
+                'departure_date' => $departure,
+                'quantity' => 1,
+                'unit_price' => $prop->booking_fee,
+                'price' => $prop->booking_fee,
+                'mur_unit_price' => $lineMur,
+                'mur_price' => $lineMur,
+                'booking_id' => $bookingId,
+            ]);
+        }
+
+        if ($prop->clean_fee > 0) {
+            if ($currency === 'EUR') {
+                $lineMur = $prop->clean_fee * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'EUR/MUR')->value('rate');
+            } elseif ($currency === 'USD') {
+                $lineMur = $prop->clean_fee * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
+            } elseif ($currency === 'ZAR') {
+                $lineMur = $prop->clean_fee * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'ZAR/USD')->value('rate');
+                $lineMur = $lineMur * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
+            }
+            DB::table('virtualdesigns_erpbookings_fees')->insert([
+                'description' => 'Departure Fee',
+                'arrival_date' => $arrival,
+                'departure_date' => $departure,
+                'quantity' => 1,
+                'unit_price' => $prop->clean_fee,
+                'price' => $prop->clean_fee,
+                'mur_unit_price' => $lineMur,
+                'mur_price' => $lineMur,
+                'booking_id' => $bookingId,
+            ]);
+        }
+
+        $amountExFees = $amount - ($prop->booking_fee + $prop->clean_fee);
+        if ($currency === 'EUR') {
+            $lineMur = $amountExFees * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'EUR/MUR')->value('rate');
+        } elseif ($currency === 'USD') {
+            $lineMur = $amountExFees * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
+        } elseif ($currency === 'ZAR') {
+            $lineMur = $amountExFees * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'ZAR/USD')->value('rate');
+            $lineMur = $lineMur * (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
+        }
+
+        $startTs = strtotime($arrival);
+        $endTs = strtotime($departure);
+        $nights = max(1, (int) round(($endTs - $startTs) / 86400));
+
+        DB::table('virtualdesigns_erpbookings_fees')->insert([
+            'description' => '[' . $prop->id . '] ' . $prop->accounting_name,
+            'arrival_date' => $arrival,
+            'departure_date' => $departure,
+            'quantity' => $nights,
+            'unit_price' => $amountExFees / $nights,
+            'price' => $amountExFees,
+            'mur_unit_price' => $lineMur / $nights,
+            'mur_price' => $lineMur,
+            'booking_id' => $bookingId,
+        ]);
+
+        $opInfo = DB::table('virtualdesigns_operationalinformation_operationalinformation')->where('property_id', '=', $prop->id)->first();
+        $managerFees = DB::table('virtualdesigns_propertymanagerfees_propertymanagerfees')->where('property_id', '=', $prop->id)->first();
+        $extras = DB::table('virtualdesigns_extracharges_extracharges')->where('property_id', '=', $prop->id)->first();
+
+        $arrivalCleanPrice = 0.0;
+        $arrivalConciergePrice = 0.0;
+        $departureCleanPrice = 0.0;
+        $departureConciergePrice = 0.0;
+        if ($managerFees !== null) {
+            if ($this->isHoliday($arrival)) {
+                $arrivalCleanPrice = (float) $managerFees->arrival_clean * 1.5;
+                $arrivalConciergePrice = (float) $managerFees->concierge_fee_arrival;
+                $departureCleanPrice = (float) $managerFees->departure_clean * 1.5;
+                $departureConciergePrice = (float) $managerFees->concierge_fee_departure * 1.5;
+            } else {
+                $arrivalCleanPrice = (float) $managerFees->arrival_clean;
+                $arrivalConciergePrice = (float) $managerFees->concierge_fee_arrival;
+                $departureCleanPrice = (float) $managerFees->departure_clean;
+                $departureConciergePrice = (float) $managerFees->concierge_fee_departure;
+            }
+        }
+
+        $welcomePackPrice = $managerFees ? (float) $managerFees->welcome_pack : 0.0;
+        $msaPrice = $managerFees ? (float) $managerFees->mid_stay_clean : 0.0;
+
+        DB::table('virtualdesigns_cleans_cleans')->insert([
+            'property_id' => $prop->id,
+            'booking_id' => $bookingId,
+            'clean_type' => 'Arrival Clean',
+            'clean_date' => $arrival,
+            'supplier_id' => $prop->user_id,
+            'price' => $arrivalCleanPrice,
+            'status' => 1,
+        ]);
+        DB::table('virtualdesigns_cleans_cleans')->insert([
+            'property_id' => $prop->id,
+            'booking_id' => $bookingId,
+            'clean_type' => 'Concierge Arrival',
+            'clean_date' => $arrival,
+            'supplier_id' => $prop->user_id,
+            'price' => $arrivalConciergePrice,
+            'status' => 1,
+        ]);
+        DB::table('virtualdesigns_cleans_cleans')->insert([
+            'property_id' => $prop->id,
+            'booking_id' => $bookingId,
+            'clean_type' => 'Welcome Pack',
+            'clean_date' => $arrival,
+            'supplier_id' => $prop->user_id,
+            'price' => $welcomePackPrice,
+            'status' => 1,
+        ]);
+
+        if ($opInfo !== null && (int) $opInfo->linen_pool === 1 && (int) $opInfo->departure_linen === 0) {
+            DB::table('virtualdesigns_laundry_laundry')->insert([
+                'property_id' => $prop->id,
+                'booking_id' => $bookingId,
+                'supplier_id' => $opInfo->linen_supplier_id,
+                'action_date' => $arrival,
+                'price' => $extras ? (float) $extras->fanote_prices : 0.0,
+                'stage' => 'Pending',
+                'status' => 1,
+            ]);
+        }
+
+        DB::table('virtualdesigns_cleans_cleans')->insert([
+            'property_id' => $prop->id,
+            'booking_id' => $bookingId,
+            'clean_type' => 'Departure Clean',
+            'clean_date' => $departure,
+            'supplier_id' => $prop->user_id,
+            'price' => $departureCleanPrice,
+            'status' => 1,
+        ]);
+        DB::table('virtualdesigns_cleans_cleans')->insert([
+            'property_id' => $prop->id,
+            'booking_id' => $bookingId,
+            'clean_type' => 'Concierge Departure',
+            'clean_date' => $departure,
+            'supplier_id' => $prop->user_id,
+            'price' => $departureConciergePrice,
+            'status' => 1,
+        ]);
+
+        if ($opInfo !== null && (int) $opInfo->linen_pool === 1 && (int) $opInfo->departure_linen === 1) {
+            DB::table('virtualdesigns_laundry_laundry')->insert([
+                'property_id' => $prop->id,
+                'booking_id' => $bookingId,
+                'supplier_id' => $opInfo->linen_supplier_id,
+                'action_date' => $departure,
+                'price' => $extras ? (float) $extras->fanote_prices : 0.0,
+                'stage' => 'Pending',
+                'status' => 1,
+            ]);
+        }
+
+        $msaCount = 1;
+        $msaDate = $booking->arrival_date;
+        $hasFirst = false;
+        while (strtotime($msaDate) < strtotime($booking->departure_date)) {
+            $msaDate = date('Y-m-d', strtotime($msaDate . '+ 1 day'));
+            if ($msaCount === 8) {
+                if ($hasFirst) {
+                    $taskDate = date('Y-m-d', strtotime($msaDate . '- 9 day'));
+                } else {
+                    $taskDate = date('Y-m-d', strtotime($msaDate . '- 5 day'));
+                    $hasFirst = true;
+                }
+                DB::table('virtualdesigns_cleans_cleans')->insert([
+                    'property_id' => $prop->id,
+                    'booking_id' => $bookingId,
+                    'clean_type' => 'MSA',
+                    'clean_date' => $taskDate,
+                    'supplier_id' => $prop->user_id,
+                    'price' => $msaPrice,
+                    'status' => 1,
+                ]);
+                if ($opInfo !== null && (int) $opInfo->linen_pool === 1) {
+                    DB::table('virtualdesigns_laundry_laundry')->insert([
+                        'property_id' => $prop->id,
+                        'booking_id' => $bookingId,
+                        'supplier_id' => $opInfo->linen_supplier_id,
+                        'action_date' => $taskDate,
+                        'price' => $extras ? (float) $extras->fanote_prices : 0.0,
+                        'stage' => 'Pending',
+                        'status' => 1,
+                    ]);
+                }
+                $msaCount = 1;
+            } else {
+                $msaCount++;
+            }
+        }
+
+        $baseUrl = env('TURNSTAY_BASE_URL', 'https://prod.turnstay.com/api/v1');
+        $apiKey = env('TURNSTAY_API_KEY');
+        $accountZa = env('TURNSTAY_ACCOUNT_ZA');
+        $accountMu = env('TURNSTAY_ACCOUNT_MU');
+
+        if (!$apiKey) {
+            return $this->corsJson(['code' => 500, 'message' => 'TURNSTAY_API_KEY not configured'], 500);
+        }
+
+        $tenantResp = Http::withHeaders([
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer ' . $apiKey,
+        ])->get($baseUrl . '/company');
+
+        $tenantId = $tenantResp->json('tenant_id');
+        if (!$tenantId) {
+            return $this->corsJson(['code' => 500, 'message' => 'Unable to resolve TurnStay tenant'], 500);
+        }
+
+        if ($siteName === 'hostagents_mu') {
+            $accountId = $accountMu;
+            $billingCurrency = 'EUR';
+        } else {
+            $accountId = $accountZa;
+            $billingCurrency = 'ZAR';
+        }
+
+        if (!$accountId) {
+            return $this->corsJson(['code' => 500, 'message' => 'TurnStay account not configured'], 500);
+        }
+
+        $intentBody = [
+            'account_id' => (int) $accountId,
+            'billing_amount' => (int) round($amount * 100),
+            'billing_currency' => $billingCurrency,
+            'checkin_date' => $arrival,
+            'checkout_date' => $departure,
+            'description' => $nights . ' nights in ' . $prop->name,
+            'product' => $prop->name,
+            'customer' => trim($customerName . ' ' . $customerSurname),
+            'customer_email' => $customerEmail,
+            'customer_phone_number' => $customerPhoneNumber,
+            'success_redirect_url' => $successUrl,
+            'failed_redirect_url' => $failUrl,
+            'payment_url_style' => 'string',
+            'payment_type' => 'Card Payment',
+            'merchant_reference' => $booking->booking_ref,
+        ];
+
+        $intentResp = Http::withHeaders([
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer ' . $apiKey,
+            'X-Tenant-ID' => $tenantId,
+        ])->post($baseUrl . '/payments/intent', $intentBody);
+
+        if (!$intentResp->ok()) {
+            return $this->corsJson(['code' => 500, 'message' => 'TurnStay request failed'], 500);
+        }
+
+        $paymentUrl = $intentResp->json('turnstay_payment_url');
+
+        return $this->corsJson([
+            'Code' => 200,
+            'BookingId' => $bookingId,
+            'BookingRef' => $booking->booking_ref,
+            'PaymentUrl' => $paymentUrl,
+        ], 200);
     }
 
     public function ConfirmPayment(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $bookingId = $request->input('BookingId');
+        if ($bookingId === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing BookingId'], 400);
+        }
+
+        DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->update([
+            'status' => 0,
+            'updated_at' => now(),
+        ]);
+        DB::table('virtualdesigns_cleans_cleans')->where('booking_id', '=', $bookingId)->update(['status' => 0]);
+        DB::table('virtualdesigns_laundry_laundry')->where('booking_id', '=', $bookingId)->update(['status' => 0]);
+
+        $booking = DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->first();
+        if (!$booking) {
+            return $this->corsJson(['code' => 404, 'message' => 'Booking not found'], 404);
+        }
+
+        $prop = DB::table('virtualdesigns_properties_properties')->where('id', '=', $booking->property_id)->first();
+        if ($prop && $prop->pricelabs_id !== null) {
+            DB::connection('remote')->table('price_lists')
+                ->where('pl_id', '=', $prop->pricelabs_id)
+                ->where('date', '>=', $booking->arrival_date)
+                ->where('date', '<', $booking->departure_date)
+                ->update(['booked' => 1]);
+
+            $bookedDates = DB::connection('remote')->table('price_lists')
+                ->where('pl_id', '=', $prop->pricelabs_id)
+                ->where('date', '>=', $booking->arrival_date)
+                ->where('date', '<', $booking->departure_date)
+                ->get();
+
+            $xmlAvail = '';
+            foreach ($bookedDates as $bookedDate) {
+                $xmlAvail .= "<Date From=\"{$bookedDate->date}\" To=\"{$bookedDate->date}\"><U>0</U><MS>{$bookedDate->min_stay}</MS><C>4</C></Date>";
+            }
+
+            if ($prop->rentals_united_id) {
+                $xml = "<Push_PutAvbUnits_RQ><Authentication><UserName>book@hostagents.com</UserName><Password>TX@m@Yy6hSUs6N!</Password></Authentication><MuCalendar PropertyID=\"{$prop->rentals_united_id}\">";
+                $xml .= $xmlAvail;
+                $xml .= '</MuCalendar></Push_PutAvbUnits_RQ>';
+                $this->rentalsUnitedRequest($xml);
+            }
+        }
+
+        return $this->corsJson(['Code' => 200, 'Message' => 'Success'], 200);
     }
 
     public function GetStatements(Request $request, $userid)
@@ -1563,22 +2871,107 @@ class BookingsController extends Controller
 
     public function SendStatements(Request $request, $id)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $propId = $request->header('propid');
+        $statement = null;
+
+        if ($propId !== null) {
+            $prop = DB::table('virtualdesigns_properties_properties')->where('id', '=', $propId)->first();
+            if ($prop && (int) $prop->country_id === 846) {
+                $statement = DB::connection('acctest')->table('owner_statements')->where('Id', '=', $id)->first();
+                DB::connection('acctest')->table('owner_statements')->where('Id', '=', $id)->update(['DateSent' => now()]);
+            } elseif ($prop && (int) $prop->country_id === 854) {
+                $statement = DB::connection('accuae')->table('owner_statements')->where('Id', '=', $id)->first();
+                DB::connection('accuae')->table('owner_statements')->where('Id', '=', $id)->update(['DateSent' => now()]);
+            } else {
+                $statement = DB::connection('acclive')->table('owner_statements')->where('Id', '=', $id)->first();
+                DB::connection('acclive')->table('owner_statements')->where('Id', '=', $id)->update(['DateSent' => now()]);
+            }
+        } else {
+            $statement = DB::connection('acclive')->table('owner_statements')->where('Id', '=', $id)->first();
+            DB::connection('acclive')->table('owner_statements')->where('Id', '=', $id)->update(['DateSent' => now()]);
+        }
+
+        return $this->corsJson($statement ?? 'success', 200);
     }
 
     public function UpdateStatements(Request $request, $id)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $propId = $request->header('propid');
+        $statement = null;
+        $connection = 'acclive';
+
+        if ($propId !== null) {
+            $prop = DB::table('virtualdesigns_properties_properties')->where('id', '=', $propId)->first();
+            if ($prop && (int) $prop->country_id === 846) {
+                $connection = 'acctest';
+            } elseif ($prop && (int) $prop->country_id === 854) {
+                $connection = 'accuae';
+            }
+        }
+
+        $statement = DB::connection($connection)->table('owner_statements')->where('Id', '=', $id)->first();
+        if (!$statement) {
+            return $this->corsJson(['code' => 404, 'message' => 'Statement not found'], 404);
+        }
+
+        $ready = $request->header('ready') ?? $statement->Ready;
+        $approved = $request->header('approved') ?? $statement->Approved;
+        $paid = $request->header('paid') ?? $statement->Paid;
+        $datePaid = $request->header('datepaid') ?? $statement->DatePaid;
+        $notes = $request->header('notes') ?? $statement->Notes;
+
+        DB::connection($connection)->table('owner_statements')->where('Id', '=', $id)->update([
+            'Ready' => $ready,
+            'Approved' => $approved,
+            'Paid' => $paid,
+            'DatePaid' => $datePaid,
+            'Notes' => $notes,
+        ]);
+
+        return $this->corsJson('success', 200);
     }
 
     public function getCancelledQuotes(Request $request)
     {
-        return $this->notImplemented();
+        $start = $request->header('startdate') ? $request->header('startdate') . ' 00:00:01' : null;
+        $end = $request->header('enddate') ? $request->header('enddate') . ' 23:59:59' : null;
+
+        $bookings = DB::table('virtualdesigns_erpbookings_erpbookings as booking')
+            ->leftJoin('virtualdesigns_properties_properties as property', 'booking.property_id', '=', 'property.id')
+            ->where('booking.status', '=', 1)
+            ->where('booking.quote_confirmed', '!=', 1);
+
+        if ($start) {
+            $bookings->where('booking.updated_at', '>=', $start);
+        }
+        if ($end) {
+            $bookings->where('booking.updated_at', '<=', $end);
+        }
+
+        $results = $bookings->select('booking.*', 'property.name')->get()->unique();
+
+        return $this->corsJson([$results, $start, $end], 200);
     }
 
     public function linkBooking(Request $request)
     {
-        return $this->notImplemented();
+        $this->assertApiKey($request);
+
+        $bookingId = $request->header('bookingid');
+        if ($bookingId === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing bookingid'], 400);
+        }
+
+        try {
+            Http::timeout(15)->get('https://hostagents.co.za/' . $bookingId . '?mode=create');
+        } catch (\Throwable $th) {
+        }
+
+        return $this->corsJson(['code' => 200, 'message' => 'Success'], 200);
     }
 
     private function isHoliday(string $date): bool
