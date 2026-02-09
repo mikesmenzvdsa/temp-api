@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\PropertiesController;
 use App\Http\Controllers\Api\BookingsController;
 use App\Http\Controllers\Api\UsersController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\StatsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,6 +33,9 @@ Route::options('{any}', function () {
 
 Route::prefix('v2')->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index']);
+    Route::prefix('stats')->group(function () {
+        Route::get('getturnover', [StatsController::class, 'getTurnover']);
+    });
     Route::prefix('bookings')->group(function () {
         Route::get('checkavail', [BookingsController::class, 'checkAvail']);
         Route::get('nightsbridgebookings', [BookingsController::class, 'nightsbridgeBookings']);
