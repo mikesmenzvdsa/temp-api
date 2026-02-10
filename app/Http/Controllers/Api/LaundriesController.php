@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\ResourceChanged;
 use App\Http\Controllers\Controller;
 use GuzzleHttp\Client;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -209,6 +210,11 @@ class LaundriesController extends Controller
         }
 
         $this->pushNotify($laundry->supplier_id, $id);
+
+        event(new ResourceChanged('laundry', 'updated', $id, [
+            'booking_id' => $laundry->booking_id,
+            'supplier_id' => $laundry->supplier_id,
+        ]));
 
         return $this->corsJson($laundries, 200);
     }

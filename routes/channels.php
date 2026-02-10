@@ -28,3 +28,19 @@ Broadcast::channel('presence.dashboard', function ($user) {
         'email' => $user->email,
     ];
 });
+
+Broadcast::channel('bookings', function ($user) {
+    return true;
+});
+
+Broadcast::channel('quotes', function ($user) {
+    return true;
+});
+
+Broadcast::channel('tasks', function ($user) {
+    return true;
+});
+
+Broadcast::channel('laundry', function ($user) {
+    return true;
+});

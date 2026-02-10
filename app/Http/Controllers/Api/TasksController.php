@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\ResourceChanged;
 use App\Http\Controllers\Controller;
 use GuzzleHttp\Client;
 use Illuminate\Database\Query\Builder;
@@ -532,6 +533,11 @@ class TasksController extends Controller
             $this->pushNotify($cleanRec->supplier_id, $id);
         }
 
+        event(new ResourceChanged('tasks', 'updated', $id, [
+            'booking_id' => $cleanRec->booking_id,
+            'property_id' => $cleanRec->property_id,
+        ]));
+
         return $this->corsJson($clean, 200);
     }
 
@@ -701,6 +707,12 @@ class TasksController extends Controller
             $date = date('Y-m-d', strtotime($date . ' + 1 days'));
         }
 
+        event(new ResourceChanged('tasks', 'updated', 0, [
+            'scope' => 'departure-arrivals',
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+        ]));
+
         return $this->corsJson([
             'code' => 200,
             'message' => 'Back to Backs proccessed succesfully',
@@ -859,6 +871,12 @@ class TasksController extends Controller
             )
             ->get()
             ->unique();
+
+        $damageClaimRecord = $damageClaim->first();
+
+        event(new ResourceChanged('tasks', 'updated', $damageClaimId, [
+            'booking_ref' => $damageClaimRecord->booking_ref ?? null,
+        ]));
 
         return $this->corsJson($damageClaim, 200);
     }

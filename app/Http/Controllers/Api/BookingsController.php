@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\ResourceChanged;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
@@ -1845,6 +1846,10 @@ class BookingsController extends Controller
             $this->sendWelcomeLetter($booking);
         }
 
+        $this->broadcastBookingChange('updated', (int) $bookingId, [
+            'quote_confirmed' => 1,
+        ]);
+
         return $this->corsJson('Success', 200);
     }
 
@@ -1901,6 +1906,11 @@ class BookingsController extends Controller
         foreach ($laundries as $laundry) {
             DB::table('virtualdesigns_laundry_laundry')->where('id', '=', $laundry->id)->update(['status' => 1]);
         }
+
+        $this->broadcastBookingChange('updated', (int) $bookingId, [
+            'status' => 1,
+            'pending_cancel' => 1,
+        ]);
 
         return $this->corsJson(['code' => 200, 'message' => 'Booking Cancelled'], 200);
     }
@@ -2048,6 +2058,12 @@ class BookingsController extends Controller
         }
 
         $guestData = DB::table('virtualdesigns_erpbookings_guestinfo')->where('id', '=', $payload->id)->first();
+
+        if ($guestData && $guestData->booking_id) {
+            $this->broadcastBookingChange('updated', (int) $guestData->booking_id, [
+                'guest_info_id' => (int) $guestData->id,
+            ]);
+        }
 
         return $this->corsJson($guestData, 200);
     }
@@ -2224,6 +2240,10 @@ class BookingsController extends Controller
 
         $log = DB::table('virtualdesigns_nightsbridgewebhook_logs')->where('id', '=', $logId)->first();
 
+        $this->broadcastBookingChange('updated', (int) $bookingId, [
+            'pending_update' => 1,
+        ]);
+
         return $this->corsJson($log, 200);
     }
 
@@ -2270,6 +2290,11 @@ class BookingsController extends Controller
                 DB::table('virtualdesigns_laundry_laundry')->where('id', '=', $laundry->id)->update(['status' => 1]);
             }
 
+            $this->broadcastBookingChange('updated', (int) $bookingId, [
+                'status' => 1,
+                'pending_cancel' => 0,
+            ]);
+
             return $this->corsJson(['code' => 200, 'message' => 'Success'], 200);
         }
 
@@ -2281,6 +2306,10 @@ class BookingsController extends Controller
                 DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->update([
                     'pending_update' => 0,
                     'updated_at' => now(),
+                ]);
+
+                $this->broadcastBookingChange('updated', (int) $bookingId, [
+                    'pending_update' => 0,
                 ]);
             }
 
@@ -3072,6 +3101,10 @@ class BookingsController extends Controller
             }
         }
 
+        $this->broadcastBookingChange('updated', (int) $bookingId, [
+            'status' => 0,
+        ]);
+
         return $this->corsJson(['Code' => 200, 'Message' => 'Success'], 200);
     }
 
@@ -3391,6 +3424,12 @@ class BookingsController extends Controller
             }
         } catch (\Throwable $th) {
         }
+    }
+
+    private function broadcastBookingChange(string $action, int|string $bookingId, array $payload = []): void
+    {
+        event(new ResourceChanged('bookings', $action, $bookingId, $payload));
+        event(new ResourceChanged('quotes', $action, $bookingId, $payload));
     }
 
     private function insertCleanTask(int $propertyId, int $bookingId, string $type, string $date, int $supplierId, float $price): void
