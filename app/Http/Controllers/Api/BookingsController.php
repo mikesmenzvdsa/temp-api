@@ -1395,6 +1395,15 @@ class BookingsController extends Controller
                 }
             }
 
+            if ($bookingAmount > 0 && $bookingAmount !== (float) ($body->totalamount ?? 0)) {
+                DB::table('virtualdesigns_erpbookings_erpbookings')
+                    ->where('id', '=', $bookingId)
+                    ->update([
+                        'booking_amount' => $bookingAmount,
+                        'updated_at' => now(),
+                    ]);
+            }
+
             DB::connection('remote')->table('price_lists')
                 ->where('pl_id', '=', $prop->pricelabs_id)
                 ->where('date', '>=', $body->arrival)
@@ -2610,6 +2619,8 @@ class BookingsController extends Controller
             'booking.bhr_com',
             'booking.third_party_com',
             'property.id as property_id',
+            'property.booking_fee as booking_fee',
+            'property.clean_fee as departure_fee',
             'guestinfo.bank_ac_name',
             'guestinfo.bank_ac_no',
             'guestinfo.bank_name',

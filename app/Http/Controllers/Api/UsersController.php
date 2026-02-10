@@ -74,6 +74,19 @@ class UsersController extends Controller
         $users = $query->get()->unique('id')->values();
 
         if ($users->isNotEmpty()) {
+            $userIds = $users->pluck('id')->all();
+            $groupMap = DB::table('users_groups')
+                ->whereIn('user_id', $userIds)
+                ->select('user_id', 'user_group_id as id')
+                ->get()
+                ->groupBy('user_id');
+
+            foreach ($users as $user) {
+                $user->groups = ($groupMap[$user->id] ?? collect())->values();
+            }
+        }
+
+        if ($users->isNotEmpty()) {
             $bodyCorpUsers = DB::table('virtualdesigns_bodycorp_bodycorp')
                 ->whereNull('deleted_at')
                 ->get();

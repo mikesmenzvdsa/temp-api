@@ -16,3 +16,15 @@ use Illuminate\Support\Facades\Broadcast;
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
+
+Broadcast::channel('users.{id}', function ($user, $id) {
+    return (int) $user->getAuthIdentifier() === (int) $id;
+});
+
+Broadcast::channel('presence.dashboard', function ($user) {
+    return [
+        'id' => $user->getAuthIdentifier(),
+        'name' => $user->name ?? $user->login ?? $user->email,
+        'email' => $user->email,
+    ];
+});

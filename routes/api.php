@@ -12,6 +12,16 @@ use App\Http\Controllers\Api\ListingTypesController;
 use App\Http\Controllers\Api\LocationsController;
 use App\Http\Controllers\Api\FeaturesController;
 use App\Http\Controllers\Api\EstablishmentDetailsController;
+use App\Http\Controllers\Api\ExtraChargesController;
+use App\Http\Controllers\Api\InventoriesController;
+use App\Http\Controllers\Api\LaundriesController;
+use App\Http\Controllers\Api\OperationalInformationController;
+use App\Http\Controllers\Api\PropertyManagerFeesController;
+use App\Http\Controllers\Api\ReportedIssuesController;
+use App\Http\Controllers\Api\ReviewsController;
+use App\Http\Controllers\Api\WelcomePacksController;
+use App\Http\Controllers\Api\TasksController;
+use App\Http\Controllers\Api\ErrorLogsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -111,6 +121,93 @@ Route::prefix('v2')->group(function () {
     Route::resource('properties', PropertiesController::class);
 
     Route::resource('features', FeaturesController::class);
+    Route::resource('extra-charges', ExtraChargesController::class);
+    Route::resource('property-manager-fees', PropertyManagerFeesController::class);
+
+    Route::prefix('inventory')->group(function () {
+        Route::post('createcategory', [InventoriesController::class, 'createCategory']);
+        Route::post('updatecategory', [InventoriesController::class, 'updateCategory']);
+        Route::post('linkcategoryproperty', [InventoriesController::class, 'linkCategoryProperty']);
+        Route::get('getcategory', [InventoriesController::class, 'getCategory']);
+        Route::post('createitem', [InventoriesController::class, 'createItem']);
+        Route::post('updateitem', [InventoriesController::class, 'updateItem']);
+        Route::post('linkitemcategory', [InventoriesController::class, 'linkItemCategory']);
+        Route::get('getitem', [InventoriesController::class, 'getItem']);
+        Route::post('createinventoryline', [InventoriesController::class, 'createInventoryLine']);
+        Route::put('updateinventory', [InventoriesController::class, 'updateInventory']);
+        Route::post('updateinventoryline', [InventoriesController::class, 'updateInventoryLine']);
+        Route::post('duplicateinventory', [InventoriesController::class, 'duplicateInventory']);
+        Route::post('deleteinventory', [InventoriesController::class, 'deleteInventory']);
+        Route::get('getinventory', [InventoriesController::class, 'getInventory']);
+    });
+
+    Route::resource('inventory', InventoriesController::class);
+
+    Route::prefix('operational-information')->group(function () {
+        Route::get('get-details/{property_id}', [OperationalInformationController::class, 'getDetails']);
+        Route::post('create-details', [OperationalInformationController::class, 'store']);
+        Route::put('update-details/{id}', [OperationalInformationController::class, 'update']);
+
+        Route::get('get-extras-and-fees/{property_id}', [ExtraChargesController::class, 'show']);
+        Route::put('update-extras-and-fees/{id}', [ExtraChargesController::class, 'update']);
+
+        Route::get('get-property-manager-fees/{property_id}', [PropertyManagerFeesController::class, 'show']);
+        Route::put('update-property-manager-fees/{id}', [PropertyManagerFeesController::class, 'update']);
+
+        Route::get('get-suppliers', [OperationalInformationController::class, 'getSuppliers']);
+        Route::put('update-supplier/{id}', [OperationalInformationController::class, 'updateSupplier']);
+        Route::put('link-supplier/{id}', [OperationalInformationController::class, 'linkSupplier']);
+        Route::get('get-approved-suppliers/{property_id}', [OperationalInformationController::class, 'getApprovedSuppliers']);
+
+        Route::get('get-linen-invoices/{property_id}', [OperationalInformationController::class, 'getLinenInvoices']);
+        Route::post('upload-linen-invoices/{property_id}', [OperationalInformationController::class, 'uploadLinenInvoices']);
+        Route::put('update-linen-invoice-details/{id}', [OperationalInformationController::class, 'updateLinenInvoiceDetails']);
+        Route::get('download-linen-invoice/{id}', [OperationalInformationController::class, 'downloadLinenInvoice']);
+        Route::delete('delete-linen-invoice/{id}', [OperationalInformationController::class, 'deleteLinenInvoice']);
+
+        Route::get('get-key-images/{property_id}', [OperationalInformationController::class, 'getKeyImages']);
+        Route::post('upload-key-images/{property_id}', [OperationalInformationController::class, 'uploadKeyImages']);
+        Route::put('update-key-details/{id}', [OperationalInformationController::class, 'updateKeyDetails']);
+        Route::delete('delete-key-image/{id}', [OperationalInformationController::class, 'deleteKeyImage']);
+
+        Route::post('add-bed/{property_id}', [OperationalInformationController::class, 'addBed']);
+        Route::put('edit-bed/{id}', [OperationalInformationController::class, 'updateBed']);
+        Route::delete('delete-bed/{id}', [OperationalInformationController::class, 'deleteBed']);
+    });
+
+    Route::get('laundries/dashboard/{userid}', [LaundriesController::class, 'dashboard']);
+    Route::resource('laundries', LaundriesController::class)->only(['index', 'show', 'update']);
+
+    Route::prefix('tasks')->group(function () {
+        Route::get('dashboard/{userid}', [TasksController::class, 'dashboard']);
+        Route::post('setdeparturearrivals', [TasksController::class, 'setDepartureArrivals']);
+        Route::get('getdamageclaims', [TasksController::class, 'getDamageClaims']);
+        Route::post('updatedamageclaim/{id?}', [TasksController::class, 'updateDamageClaim']);
+    });
+
+    Route::resource('tasks', TasksController::class);
+
+    Route::resource('errorlogs', ErrorLogsController::class);
+
+    Route::prefix('reviews')->group(function () {
+        Route::get('/', [ReviewsController::class, 'index']);
+        Route::put('update-review/{id}', [ReviewsController::class, 'updateReview']);
+        Route::post('send-review', [ReviewsController::class, 'sendReview']);
+    });
+
+    Route::resource('welcome-packs', WelcomePacksController::class);
+
+    Route::prefix('reported-issues/{id}')->group(function () {
+        Route::post('/', [ReportedIssuesController::class, 'update']);
+        Route::post('duplicate-issue', [ReportedIssuesController::class, 'duplicateIssue']);
+        Route::post('allocate-user/{user_id?}', [ReportedIssuesController::class, 'allocateUser']);
+        Route::put('deallocate-user', [ReportedIssuesController::class, 'deallocateUser']);
+        Route::put('update-allocated-user/{user_id}', [ReportedIssuesController::class, 'updateAllocatedUser']);
+        Route::post('send-mail', [ReportedIssuesController::class, 'onSendMail']);
+        Route::post('send-issue-form-as-mail', [ReportedIssuesController::class, 'onSendIssueFormAsMail']);
+    });
+
+    Route::resource('reported-issues', ReportedIssuesController::class);
 
     Route::prefix('establishment-details')->group(function () {
         Route::get('get-prop-table-info', [EstablishmentDetailsController::class, 'getPropTableInfo']);
