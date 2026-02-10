@@ -51,7 +51,6 @@ Route::prefix('v2')->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index']);
     Route::prefix('stats')->group(function () {
         Route::get('getturnover', [StatsController::class, 'getTurnover']);
-        Route::get('getoccupancy', [StatsController::class, 'getOccupancy']);
     });
     Route::prefix('locations')->group(function () {
         Route::get('serp', [LocationsController::class, 'serp']);

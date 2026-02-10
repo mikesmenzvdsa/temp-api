@@ -44,3 +44,7 @@ Broadcast::channel('tasks', function ($user) {
 Broadcast::channel('laundry', function ($user) {
     return true;
 });
+
+Broadcast::channel('calendar', function ($user) {
+    return true;
+});

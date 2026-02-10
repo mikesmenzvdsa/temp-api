@@ -1353,6 +1353,7 @@ class BookingsController extends Controller
                 'client_email' => $body->email,
                 'arrival_date' => $body->arrival,
                 'departure_date' => $body->departure,
+                'room_name' => $body->room_name ?? $prop->accounting_name ?? $prop->name ?? '',
                 'adults' => $bookingType === 'block' ? 1 : (int) ($body->adults ?? 0),
                 'children' => (int) ($body->children ?? 0),
                 'payment_notes' => $body->notes ?? null,
@@ -1537,16 +1538,21 @@ class BookingsController extends Controller
             } else {
                 if (!empty($body->fees)) {
                     foreach ($body->fees as $fee) {
-                        if ($fee->description === 'Breakage Deposit') {
+                        $feeData = is_array($fee) ? (object) $fee : $fee;
+                        if (!isset($feeData->description)) {
+                            continue;
+                        }
+
+                        if ($feeData->description === 'Breakage Deposit') {
                             DB::table('virtualdesigns_erpbookings_damage')->insert([
                                 'booking_id' => $bookingId,
                                 'property_id' => $body->propid,
                                 'internal_ref' => $internalRef . '-BD',
-                                'amount' => $fee->price,
+                                'amount' => $feeData->price,
                                 'paid_credit' => 0,
                                 'paid_eft' => 0,
                             ]);
-                            if ($fee->price >= 3000 || (int) $prop->bd_override === 1) {
+                            if ($feeData->price >= 3000 || (int) $prop->bd_override === 1) {
                                 DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->update(['bd_active' => 1]);
                             }
                         } else {
@@ -1555,31 +1561,31 @@ class BookingsController extends Controller
                                 ->where('pl_id', '=', $prop->pricelabs_id)
                                 ->value('currency');
                             if ((int) $prop->country_id === 846) {
-                                $lineMur = (float) $fee->unit_price;
+                                $lineMur = (float) $feeData->unit_price;
                             } else {
                                 if ($currency === 'EUR') {
                                     $rate = (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'EUR/MUR')->value('rate');
-                                    $lineMur = $fee->unit_price * $rate;
+                                    $lineMur = $feeData->unit_price * $rate;
                                 }
                                 if ($currency === 'USD') {
                                     $rate = (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
-                                    $lineMur = $fee->unit_price * $rate;
+                                    $lineMur = $feeData->unit_price * $rate;
                                 }
                                 if ($currency === 'ZAR') {
                                     $usdRate = (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'ZAR/USD')->value('rate');
                                     $murRate = (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
-                                    $lineMur = ($fee->unit_price * $usdRate) * $murRate;
+                                    $lineMur = ($feeData->unit_price * $usdRate) * $murRate;
                                 }
                             }
                             DB::table('virtualdesigns_erpbookings_fees')->insert([
-                                'description' => $fee->description,
+                                'description' => $feeData->description,
                                 'arrival_date' => $body->arrival,
                                 'departure_date' => $body->departure,
-                                'quantity' => $fee->quantity,
-                                'unit_price' => $fee->unit_price,
-                                'price' => $fee->price,
+                                'quantity' => $feeData->quantity,
+                                'unit_price' => $feeData->unit_price,
+                                'price' => $feeData->price,
                                 'mur_unit_price' => $lineMur,
-                                'mur_price' => $lineMur * $fee->quantity,
+                                'mur_price' => $lineMur * $feeData->quantity,
                                 'booking_id' => $bookingId,
                             ]);
                         }
@@ -3430,6 +3436,7 @@ class BookingsController extends Controller
     {
         event(new ResourceChanged('bookings', $action, $bookingId, $payload));
         event(new ResourceChanged('quotes', $action, $bookingId, $payload));
+        event(new ResourceChanged('calendar', $action, $bookingId, $payload));
     }
 
     private function insertCleanTask(int $propertyId, int $bookingId, string $type, string $date, int $supplierId, float $price): void
