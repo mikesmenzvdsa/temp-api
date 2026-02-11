@@ -62,6 +62,8 @@ Route::prefix('v2')->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index']);
     Route::prefix('stats')->group(function () {
         Route::get('getturnover', [StatsController::class, 'getTurnover']);
+        Route::get('getoccupancy', [StatsController::class, 'getOccupancy']);
+        Route::get('getnights', [StatsController::class, 'getNights']);
     });
     Route::prefix('locations')->group(function () {
         Route::get('serp', [LocationsController::class, 'serp']);
@@ -207,6 +209,9 @@ Route::prefix('v2')->group(function () {
     });
 
     Route::resource('welcome-packs', WelcomePacksController::class);
+    // compatibility routes for frontend requests without hyphen
+    Route::get('welcomepacks', [WelcomePacksController::class, 'index']);
+    Route::get('welcomepacks/{id}', [WelcomePacksController::class, 'show']);
 
     Route::prefix('reported-issues/{id}')->group(function () {
         Route::post('/', [ReportedIssuesController::class, 'update']);

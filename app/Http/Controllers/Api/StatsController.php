@@ -180,6 +180,214 @@ class StatsController extends Controller
         return $this->corsJson($monthsArray, 200);
     }
 
+    public function getOccupancy(Request $request)
+    {
+        $this->assertApiKey($request);
+
+        $userId = $request->header('userid');
+        $month = (int) $request->header('month');
+        $year = (int) $request->header('year');
+        $locId = $request->header('locid', 'all');
+        $bedrooms = $request->header('bedrooms', 'all');
+        $propIdHeader = $request->header('propid', 'all');
+
+        if ($userId === null || $month <= 0 || $year <= 0) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing required headers'], 400);
+        }
+
+        // Build property list (similar to getTurnover)
+        if ($propIdHeader !== 'all') {
+            $propIds = array_filter(explode(',', (string) $propIdHeader));
+            $propertyRecs = DB::table('virtualdesigns_properties_properties')
+                ->whereIn('id', $propIds)
+                ->select('id', 'name', 'date_activated', 'date_deactivated', 'country_id', 'capacity')
+                ->get();
+        } else {
+            $propertyQuery = DB::table('virtualdesigns_properties_properties')
+                ->whereNull('deleted_at')
+                ->whereNotNull('date_activated')
+                ->where('is_live', '=', 1)
+                ->where('exclude_occupancy', '!=', 1);
+
+            if ($locId !== 'all') {
+                $propertyQuery->where('suburb_id', '=', $locId);
+            }
+            if ($bedrooms !== 'all') {
+                $propertyQuery->where('bedroom_num', '=', $bedrooms);
+            }
+
+            $propertyRecs = $propertyQuery
+                ->select('id', 'name', 'date_activated', 'date_deactivated', 'country_id', 'capacity')
+                ->get();
+        }
+
+        if ($propertyRecs->isEmpty()) {
+            return $this->corsJson('No properties matching applied filters', 404);
+        }
+
+        $monthsArray = [];
+        $propCount = 0;
+
+        foreach ($propertyRecs as $propertyRec) {
+            for ($i = 0; $i < 12; $i++) {
+                $start = date('Y-m-d', strtotime($year . '-' . $month . '-01' . ' + ' . $i . ' months'));
+                $end = date('Y-m-t', strtotime($start));
+
+                $monthsArray[$propCount][$i] = [
+                    'start' => $start,
+                    'end' => $end,
+                    'month' => date('M', strtotime($start)),
+                    'year' => date('Y', strtotime($start)),
+                    'DateActivated' => $propertyRec->date_activated,
+                    'DateDeactivated' => $propertyRec->date_deactivated,
+                    'stats' => [],
+                ];
+            }
+
+            $occupancies = [];
+
+            for ($i = 0; $i < 12; $i++) {
+                $statsMonth = $monthsArray[$propCount][$i];
+
+                $bookings = DB::table('virtualdesigns_erpbookings_erpbookings')
+                    ->whereNull('deleted_at')
+                    ->where('status', '=', 0)
+                    ->where('quote_confirmed', '=', 1)
+                    ->where('so_type', '=', 'booking')
+                    ->where('arrival_date', '<=', $statsMonth['end'])
+                    ->where('departure_date', '>=', $statsMonth['start'])
+                    ->where('property_id', '=', $propertyRec->id)
+                    ->select('id', 'arrival_date', 'departure_date')
+                    ->get();
+
+                $bookedNights = 0;
+                foreach ($bookings as $booking) {
+                    $s = max(strtotime($booking->arrival_date), strtotime($statsMonth['start']));
+                    $e = min(strtotime($booking->departure_date), strtotime($statsMonth['end']));
+                    $nights = max(0, (int) round(($e - $s) / 86400));
+                    $bookedNights += $nights;
+                }
+
+                $daysInMonth = (int) date('t', strtotime($statsMonth['start']));
+                $capacity = isset($propertyRec->capacity) && (int) $propertyRec->capacity > 0 ? (int) $propertyRec->capacity : 1;
+
+                $possibleNights = $daysInMonth * $capacity;
+                $occupancyPercent = $possibleNights > 0 ? ($bookedNights / $possibleNights) * 100 : 0;
+
+                $monthsArray[$propCount][$i]['stats']['Occupancy'] = round($occupancyPercent, 0);
+                $occupancies[] = $monthsArray[$propCount][$i]['stats']['Occupancy'];
+            }
+
+            $avg = count($occupancies) ? array_sum($occupancies) / count($occupancies) : 0;
+            $monthsArray[$propCount][0]['propID'] = $propertyRec->id;
+            $monthsArray[$propCount][0]['propName'] = $propertyRec->name;
+            $monthsArray[$propCount][0]['AvgOccupancy'] = round($avg, 0);
+
+            $propCount++;
+        }
+
+        return $this->corsJson($monthsArray, 200);
+    }
+
+    public function getNights(Request $request)
+    {
+        $this->assertApiKey($request);
+
+        $userId = $request->header('userid');
+        $month = (int) $request->header('month');
+        $year = (int) $request->header('year');
+        $locId = $request->header('locid', 'all');
+        $bedrooms = $request->header('bedrooms', 'all');
+        $propIdHeader = $request->header('propid', 'all');
+
+        if ($userId === null || $month <= 0 || $year <= 0) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing required headers'], 400);
+        }
+
+        // Build property list
+        if ($propIdHeader !== 'all') {
+            $propIds = array_filter(explode(',', (string) $propIdHeader));
+            $propertyRecs = DB::table('virtualdesigns_properties_properties')
+                ->whereIn('id', $propIds)
+                ->select('id', 'name', 'date_activated', 'date_deactivated', 'country_id', 'capacity')
+                ->get();
+        } else {
+            $propertyQuery = DB::table('virtualdesigns_properties_properties')
+                ->whereNull('deleted_at')
+                ->whereNotNull('date_activated')
+                ->where('is_live', '=', 1);
+
+            if ($locId !== 'all') {
+                $propertyQuery->where('suburb_id', '=', $locId);
+            }
+            if ($bedrooms !== 'all') {
+                $propertyQuery->where('bedroom_num', '=', $bedrooms);
+            }
+
+            $propertyRecs = $propertyQuery
+                ->select('id', 'name', 'date_activated', 'date_deactivated', 'country_id', 'capacity')
+                ->get();
+        }
+
+        if ($propertyRecs->isEmpty()) {
+            return $this->corsJson('No properties matching applied filters', 404);
+        }
+
+        $monthsArray = [];
+        $propCount = 0;
+
+        foreach ($propertyRecs as $propertyRec) {
+            $totalNights = 0;
+
+            for ($i = 0; $i < 12; $i++) {
+                $start = date('Y-m-d', strtotime($year . '-' . $month . '-01' . ' + ' . $i . ' months'));
+                $end = date('Y-m-t', strtotime($start));
+
+                $monthsArray[$propCount][$i] = [
+                    'start' => $start,
+                    'end' => $end,
+                    'month' => date('M', strtotime($start)),
+                    'year' => date('Y', strtotime($start)),
+                    'DateActivated' => $propertyRec->date_activated,
+                    'DateDeactivated' => $propertyRec->date_deactivated,
+                    'stats' => [],
+                ];
+
+                $bookings = DB::table('virtualdesigns_erpbookings_erpbookings')
+                    ->whereNull('deleted_at')
+                    ->where('status', '=', 0)
+                    ->where('quote_confirmed', '=', 1)
+                    ->where('so_type', '=', 'booking')
+                    ->where('arrival_date', '<=', $end)
+                    ->where('departure_date', '>=', $start)
+                    ->where('property_id', '=', $propertyRec->id)
+                    ->select('id', 'arrival_date', 'departure_date')
+                    ->get();
+
+                $bookedNights = 0;
+                foreach ($bookings as $booking) {
+                    $s = max(strtotime($booking->arrival_date), strtotime($start));
+                    $e = min(strtotime($booking->departure_date), strtotime($end));
+                    $nights = max(0, (int) round(($e - $s) / 86400));
+                    $bookedNights += $nights;
+                }
+
+                $monthsArray[$propCount][$i]['stats']['NightsBooked'] = $bookedNights;
+                $totalNights += $bookedNights;
+            }
+
+            $avg = $totalNights > 0 ? ($totalNights / 12) : 0;
+            $monthsArray[$propCount][0]['propID'] = $propertyRec->id;
+            $monthsArray[$propCount][0]['propName'] = $propertyRec->name;
+            $monthsArray[$propCount][0]['TotalNights'] = $totalNights;
+            $monthsArray[$propCount][0]['AvgNights'] = round($avg, 0);
+
+            $propCount++;
+        }
+
+        return $this->corsJson($monthsArray, 200);
+    }
+
     private function getAccConnection(int $countryId): string
     {
         if ($countryId === 846) {
