@@ -6,10 +6,10 @@ use Illuminate\Support\Facades\DB;
 
 class RentalsUnitedService
 {
-    private string $url = 'https://rm.rentalsunited.com/api/Handler.ashx';
-    private string $username = 'book@hostagents.com';
-    private string $password = 'TX@m@Yy6hSUs6N!';
-    private string $ownerId = '686995';
+    private string $url = env('RENTALS_UNITED_URL');
+    private string $username = env('RENTALS_UNITED_USERNAME');
+    private string $password = env('RENTALS_UNITED_PASSWORD');
+    private string $ownerId = env('RENTALS_UNITED_OWNER_ID');
 
     public function push(int $propertyId)
     {
