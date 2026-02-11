@@ -64,6 +64,7 @@ Route::prefix('v2')->group(function () {
         Route::get('getturnover', [StatsController::class, 'getTurnover']);
         Route::get('getoccupancy', [StatsController::class, 'getOccupancy']);
         Route::get('getnights', [StatsController::class, 'getNights']);
+        Route::get('getaccdashdata', [StatsController::class, 'getAccDashData']);
     });
     Route::prefix('locations')->group(function () {
         Route::get('serp', [LocationsController::class, 'serp']);

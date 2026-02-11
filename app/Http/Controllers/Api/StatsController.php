@@ -388,6 +388,144 @@ class StatsController extends Controller
         return $this->corsJson($monthsArray, 200);
     }
 
+    public function getAccDashData(Request $request)
+    {
+        $this->assertApiKey($request);
+
+        $userId = $request->header('userid');
+        $month = (int) $request->header('month');
+        $year = (int) $request->header('year');
+        $propIdHeader = $request->header('propid', 'all');
+        $country = $request->header('country', 'ZA');
+
+        if ($userId === null || $month <= 0 || $year <= 0) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing required headers'], 400);
+        }
+
+        // determine day range for the month
+        $start = date('Y-m-d', strtotime(sprintf('%04d-%02d-01', $year, $month)));
+        $end = date('Y-m-t', strtotime($start));
+
+        // build base query
+        $query = DB::table('virtualdesigns_erpbookings_erpbookings')
+            ->whereNull('deleted_at')
+            ->where('so_type', '=', 'booking')
+            ->where('arrival_date', '<=', $end)
+            ->where('departure_date', '>=', $start);
+
+        if ($propIdHeader !== 'all') {
+            $propIds = array_filter(explode(',', (string) $propIdHeader));
+            $query->whereIn('property_id', $propIds);
+        }
+
+        $bookings = $query->select('id', 'arrival_date', 'departure_date', 'booking_amount', 'total_rands', 'quote_confirmed', 'property_id')
+            ->get();
+
+        // build property map (country_id, name) for accounting lookup
+        $propertyIds = $bookings->pluck('property_id')->unique()->filter()->values()->all();
+        $propertiesMap = [];
+        if (!empty($propertyIds)) {
+            $props = DB::table('virtualdesigns_properties_properties')
+                ->whereIn('id', $propertyIds)
+                ->select('id', 'name', 'country_id')
+                ->get();
+
+            foreach ($props as $p) {
+                $propertiesMap[$p->id] = $p;
+            }
+        }
+
+        // prepare daily buckets
+        $period = new \DatePeriod(
+            new \DateTime($start),
+            new \DateInterval('P1D'),
+            (new \DateTime($end))->modify('+1 day')
+        );
+
+        $newBookingsDaily = [];
+        $confirmedBookingsDaily = [];
+        $grossRevenueDaily = [];
+        $hostAgentsCommDaily = [];
+
+        foreach ($period as $dt) {
+            $d = $dt->format('Y-m-d');
+            $newBookingsDaily[$d] = 0;
+            $confirmedBookingsDaily[$d] = 0;
+            $grossRevenueDaily[$d] = 0;
+            $hostAgentsCommDaily[$d] = 0;
+        }
+
+        $totalNew = 0;
+        $totalConfirmed = 0;
+        $totalGross = 0;
+        $totalHostAgents = 0;
+
+        foreach ($bookings as $b) {
+            // attribute this booking to its arrival date (clamped into month)
+            $arrival = max(strtotime($b->arrival_date), strtotime($start));
+            $arrivalDate = date('Y-m-d', $arrival);
+            if (!isset($newBookingsDaily[$arrivalDate])) {
+                // if arrival falls outside bucket (safety), skip
+                continue;
+            }
+
+            $newBookingsDaily[$arrivalDate]++;
+            $totalNew++;
+
+            if ((int) $b->quote_confirmed === 1) {
+                $confirmedBookingsDaily[$arrivalDate]++;
+                $totalConfirmed++;
+            }
+
+            $gross = (float) ($b->total_rands ?? $b->booking_amount ?? 0);
+            $grossRevenueDaily[$arrivalDate] += $gross;
+            $totalGross += $gross;
+
+            // host agents commission - attempt to lookup in accounting DB per property
+            $ha = 0;
+            try {
+                $propId = $b->property_id ?? null;
+                $countryId = 0;
+                if ($propId && isset($propertiesMap[$propId])) {
+                    $countryId = (int) $propertiesMap[$propId]->country_id;
+                }
+
+                $accConnection = $this->getAccConnection($countryId);
+                $salesBooking = DB::connection($accConnection)
+                    ->table('bookings')
+                    ->where('HostAgentsId', '=', $b->id)
+                    ->where('Status', '=', 0)
+                    ->whereNull('DeletedAt')
+                    ->first();
+
+                if ($salesBooking && isset($salesBooking->HostAgentsCommAmount)) {
+                    $ha = (float) $salesBooking->HostAgentsCommAmount;
+                }
+            } catch (\Throwable $th) {
+                // swallow errors and leave ha as 0
+                $ha = 0;
+            }
+
+            $hostAgentsCommDaily[$arrivalDate] += $ha;
+            $totalHostAgents += $ha;
+        }
+
+        // build response shape expected by frontend
+        $response = [
+            'currency' => $this->getCurrency( ($country === 'MU') ? 846 : 0 ),
+            'NewBookingsDaily' => $newBookingsDaily,
+            'ConfirmedBookingsDaily' => $confirmedBookingsDaily,
+            'GrossRevenueDaily' => $grossRevenueDaily,
+            'HostAgentsCommDaily' => $hostAgentsCommDaily,
+            'NewBookingsTotal' => $totalNew,
+            'ConfirmedBookingsTotal' => $totalConfirmed,
+            'GrossRevenueTotal' => round($totalGross, 2),
+            'HostAgentsCommTotal' => round($totalHostAgents, 2),
+        ];
+
+        return $this->corsJson($response, 200);
+    }
+
     private function getAccConnection(int $countryId): string
     {
         if ($countryId === 846) {
