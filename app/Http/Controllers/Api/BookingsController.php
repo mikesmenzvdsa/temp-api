@@ -216,7 +216,7 @@ class BookingsController extends Controller
         foreach ($properties as $index => $prop) {
             $propAvail = null;
             if ($prop->pricelabs_id !== null) {
-                $propAvail = DB::connection('remote')->table('price_lists')
+                $propAvail = DB::table('price_lists')
                     ->where('pl_id', '=', $prop->pricelabs_id)
                     ->where('date', '>=', $startDate)
                     ->where('date', '<=', $endDate)
@@ -440,7 +440,7 @@ class BookingsController extends Controller
                 ->where('property_id', '=', $propId)
                 ->first();
 
-            $availRows = DB::connection('remote')->table('price_lists')
+            $availRows = DB::table('price_lists')
                 ->where('pl_id', '=', $prop->pricelabs_id)
                 ->where('date', '>=', $arrival)
                 ->where('date', '<=', $departure)
@@ -594,7 +594,7 @@ class BookingsController extends Controller
             $cleanFee = (float) $prop->clean_fee;
 
             if ((int) $prop->country_id === 846) {
-                $currency = DB::connection('remote')->table('price_lists')
+                $currency = DB::table('price_lists')
                     ->where('pl_id', '=', $prop->pricelabs_id)
                     ->value('currency');
                 if ($currency === 'EUR') {
@@ -979,7 +979,7 @@ class BookingsController extends Controller
         foreach ($properties as $index => $prop) {
             $propAvail = null;
             if ($prop->pricelabs_id !== null) {
-                $propAvail = DB::connection('remote')->table('price_lists')
+                $propAvail = DB::table('price_lists')
                     ->where('pl_id', '=', $prop->pricelabs_id)
                     ->where('date', '>=', $startDate)
                     ->where('date', '<=', $endDate)
@@ -1376,7 +1376,7 @@ class BookingsController extends Controller
 
             $bookingAmount = (float) ($body->totalamount ?? 0);
             if ($bookingAmount <= 0 && $prop->pricelabs_id !== null) {
-                $availRows = DB::connection('remote')->table('price_lists')
+                $availRows = DB::table('price_lists')
                     ->where('pl_id', '=', $prop->pricelabs_id)
                     ->where('date', '>=', $body->arrival)
                     ->where('date', '<', $body->departure)
@@ -1404,13 +1404,13 @@ class BookingsController extends Controller
                     ]);
             }
 
-            DB::connection('remote')->table('price_lists')
+            DB::table('price_lists')
                 ->where('pl_id', '=', $prop->pricelabs_id)
                 ->where('date', '>=', $body->arrival)
                 ->where('date', '<', $body->departure)
                 ->update(['booked' => 1]);
 
-            $bookedDates = DB::connection('remote')->table('price_lists')
+            $bookedDates = DB::table('price_lists')
                 ->where('pl_id', '=', $prop->pricelabs_id)
                 ->where('date', '>=', $body->arrival)
                 ->where('date', '<', $body->departure)
@@ -1550,7 +1550,7 @@ class BookingsController extends Controller
                             }
                         } else {
                             $lineMur = 0.0;
-                            $currency = DB::connection('remote')->table('price_lists')
+                            $currency = DB::table('price_lists')
                                 ->where('pl_id', '=', $prop->pricelabs_id)
                                 ->value('currency');
                             if ((int) $prop->country_id === 846) {
@@ -1875,7 +1875,7 @@ class BookingsController extends Controller
             ->get();
 
         if ($prop && $prop->pricelabs_id !== null) {
-            DB::connection('remote')->table('price_lists')
+            DB::table('price_lists')
                 ->where('date', '>=', $booking->arrival_date)
                 ->where('date', '<', $booking->departure_date)
                 ->where('pl_id', $prop->pricelabs_id)
@@ -2690,7 +2690,7 @@ class BookingsController extends Controller
 
         $currencyRec = null;
         if ($prop->pricelabs_id !== null) {
-            $currencyRec = DB::connection('remote')->table('price_lists')
+            $currencyRec = DB::table('price_lists')
                 ->where('pl_id', '=', $prop->pricelabs_id)
                 ->select('currency')
                 ->first();
@@ -3047,13 +3047,13 @@ class BookingsController extends Controller
 
         $prop = DB::table('virtualdesigns_properties_properties')->where('id', '=', $booking->property_id)->first();
         if ($prop && $prop->pricelabs_id !== null) {
-            DB::connection('remote')->table('price_lists')
+            DB::table('price_lists')
                 ->where('pl_id', '=', $prop->pricelabs_id)
                 ->where('date', '>=', $booking->arrival_date)
                 ->where('date', '<', $booking->departure_date)
                 ->update(['booked' => 1]);
 
-            $bookedDates = DB::connection('remote')->table('price_lists')
+            $bookedDates = DB::table('price_lists')
                 ->where('pl_id', '=', $prop->pricelabs_id)
                 ->where('date', '>=', $booking->arrival_date)
                 ->where('date', '<', $booking->departure_date)
