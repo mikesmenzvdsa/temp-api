@@ -39,6 +39,12 @@ class LoginController extends Controller
         }
 
         if (empty($fields)) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'No login fields are available in the users table.',
+                ], 422);
+            }
+
             return back()->withErrors([
                 'login' => 'No login fields are available in the users table.',
             ])->withInput();
@@ -57,8 +63,18 @@ class LoginController extends Controller
 
             if (Auth::guard($guard)->attempt($credentials, $remember)) {
                 $request->session()->regenerate();
+
+                if ($request->expectsJson()) {
+                    return $this->me($request);
+                }
+
                 return redirect()->intended('/me');
             }
+        }
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'These credentials do not match our records.',
+            ], 422);
         }
 
         return back()->withErrors([
@@ -71,6 +87,9 @@ class LoginController extends Controller
         Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+        if ($request->expectsJson()) {
+            return response()->noContent();
+        }
 
         return redirect('/login');
     }

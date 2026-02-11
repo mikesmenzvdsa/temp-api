@@ -28,5 +28,12 @@ Route::group(['prefix' => 'properties'], function () {
     $controller = 'VirtualDesigns\HostAgentsApi\Controllers\PropertiesController';
 
 });
+// add pulse route for calendar updates
+Route::post('/calendar/pulse', function () {
+    event(new \App\Events\CalendarUpdated());
+    return response()->json(['status' => 'success']);
+})->middleware('auth');
+
+
 
 Route::resource('properties', PropertiesController::class);

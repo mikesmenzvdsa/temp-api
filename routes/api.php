@@ -22,6 +22,8 @@ use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\WelcomePacksController;
 use App\Http\Controllers\Api\TasksController;
 use App\Http\Controllers\Api\ErrorLogsController;
+use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ReservationsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -47,6 +49,15 @@ Route::options('{any}', function () {
 })->where('any', '.*');
 
 Route::prefix('v2')->group(function () {
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('product/{page}', [ProductController::class, 'product']);
+        Route::post('product', [ProductController::class, 'updateproduct']);
+
+        Route::get('reservations/fetch-bookings', [ReservationsController::class, 'fetchBookings']);
+        Route::get('reservations/{page}', [ReservationsController::class, 'reservations']);
+        Route::post('reservations', [ReservationsController::class, 'updatereservations']);
+    });
+
     Route::resource('channels', ChannelsController::class);
     Route::get('dashboard', [DashboardController::class, 'index']);
     Route::prefix('stats')->group(function () {
