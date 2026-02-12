@@ -73,12 +73,13 @@ class ProductController extends Controller
 
     /**
      * Product data that can be use to visualized data.
-     */
+    */
     public function storeBodyCorp(Request $request)
     {
         try {
-
+            
             $this->assertApiKey($request);
+            Log::debug($request);
 
             if ($request->body_corp_full_names_required == 1) {
                 $body_corp_full_names_required = 1;
@@ -129,13 +130,18 @@ class ProductController extends Controller
                 $body_corp_to_send = 0;
             }
 
+
             $body_corp_emails = array();
             $emails_inc = 0;
-            while ($emails_inc <= $request->body_corp_emails_count) {
-                $body_corp_email = $request->input('body_corp_email_' . $emails_inc);
-                array_push($body_corp_emails, $body_corp_email);
-                $emails_inc = $emails_inc + 1;
+
+            if(isset($request->body_corp_email) && $request->body_corp_email !== "" ) {
+                    array_push($body_corp_emails, $request->body_corp_email);
             }
+            // while ($emails_inc <= $request->body_corp_emails_count) {
+            //     $body_corp_email = $request->input('body_corp_email_' . $emails_inc);
+            //     array_push($body_corp_emails, $body_corp_email);
+            //     $emails_inc = $emails_inc + 1;
+            // }
 
             $insertBodyCorp = DB::table('virtualdesigns_bodycorp_bodycorp')
                 ->insert([
@@ -144,7 +150,7 @@ class ProductController extends Controller
                     "body_corp_phone" => $request->body_corp_phone,
                     "body_corp_contact_person" => $request->body_corp_contact_person,
                     "body_corp_emails" => json_encode($body_corp_emails),
-                    "notes" => $request->body_corp_notes,
+                    "notes" => $request->notes,
                     "body_corp_to_send" => $body_corp_to_send,
                     "body_corp_full_names_required" => $body_corp_full_names_required,
                     "body_corp_vehicle_reg_required" => $body_corp_vehicle_reg_required,
