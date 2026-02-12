@@ -125,6 +125,8 @@ Route::prefix('v2')->group(function () {
     Route::prefix('product')->group(function () {
         Route::get('dashboard', [ProductController::class, 'dashboard']);
         Route::get('check-in-rules', [ProductController::class, 'index']);
+        Route::post('bodycorp/deleted/{id}', [ProductController::class, 'destroy']);
+        Route::post('bodycorp/edit/{id}', [ProductController::class, 'update']);
         Route::post('add-bodycorp', [ProductController::class, 'storeBodyCorp']);
         Route::put('update-owner-details/{id}', [ProductController::class, 'updateOwnerDetails']);
         Route::delete('delete/{id}', [ProductController::class, 'destroy']);
