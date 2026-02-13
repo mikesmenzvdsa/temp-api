@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\WelcomePacksController;
 use App\Http\Controllers\Api\TasksController;
 use App\Http\Controllers\Api\ErrorLogsController;
 use App\Http\Controllers\API\ProductController;
+use App\Http\Controllers\API\ReservationsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -137,12 +138,12 @@ Route::prefix('v2')->group(function () {
     //     Route::post('reservations', [ReservationsController::class, 'updatereservations']);
 
     Route::prefix('reservations')->group(function () {
-        Route::get('dashboard', [ProductController::class, 'index']);
-        Route::get('collect', [ProductController::class, 'collect']);
-        Route::get('collected', [ProductController::class, 'collected']);
-        Route::get('sent', [ProductController::class, 'sentTobodyCorp']);
-        Route::get('past-completed', [ProductController::class, 'pastCompleted']);
-        Route::get('past-incompleted', [ProductController::class, 'pastIncompleted']);
+        Route::get('dashboard', [ReservationsController::class, 'index']);
+        Route::get('collect', [ReservationsController::class, 'collect']);
+        Route::get('collected', [ReservationsController::class, 'collected']);
+        Route::get('sent', [ReservationsController::class, 'sentTobodyCorp']);
+        Route::get('past-completed', [ReservationsController::class, 'pastCompleted']);
+        Route::get('past-incompleted', [ReservationsController::class, 'pastIncompleted']);
     });
 
     Route::resource('features', FeaturesController::class);

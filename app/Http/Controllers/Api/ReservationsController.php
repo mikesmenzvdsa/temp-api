@@ -1,8 +1,9 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\API;
 
 use App\Booking;
+use App\Http\Controllers\Controller;
 use Carbon\Carbon;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
@@ -13,6 +14,25 @@ use Illuminate\Support\Facades\Storage;
 
 class ReservationsController extends Controller
 {
+    private function corsJson($data, int $status)
+    {
+        return response()
+            ->json($data, $status)
+            ->header('Content-Type', 'application.json')
+            ->header('Access-Control-Allow-Origin', '*');
+    }
+
+    private function assertApiKey(Request $request): void
+    {
+        $apiKey = $request->header('key');
+        if ($apiKey === null || md5('aiden@virtualdesigns.co.za3d@=kWfmMR') !== $apiKey) {
+            throw new HttpResponseException($this->corsJson([
+                'code' => 401,
+                'message' => 'Wrong API Key',
+            ], 401));
+        }
+    }
+
     /**
      * Display accounts reservations pages when authenticated
      *
@@ -772,12 +792,13 @@ class ReservationsController extends Controller
     {
 
         try {
-            Log::debug("view-page");
+            Log::debug("Collect Guest Details");
+            
             $fourteenDaysLater = Carbon::now()->addDays(14);
             $today = Carbon::now()->toDateString();
 
-            $user_email = Auth::user()->email;
-            $role = Auth::user()->role;
+            // $user_email = Auth::user()->email;
+            // $role = Auth::user()->role;
 
             $bodyCorpDefault = DB::table('virtualdesigns_bodycorp_bodycorp')->where('id', '=', 1)->whereNull('deleted_at')->first();
 
@@ -790,9 +811,9 @@ class ReservationsController extends Controller
                 ->where('booking.status', '!=', 1)
                 ->where('booking.deleted_at', '=', null)
                 ->where('booking.quote_confirmed', '=', 1)
-                ->when(($role->id !== 1 && $role->id !== 2), function ($query) use ($user_email) {
-                    $query->where('email', $user_email);
-                })
+                // ->when(($role->id !== 1 && $role->id !== 2), function ($query) use ($user_email) {
+                //     $query->where('email', $user_email);
+                // })
                 ->where(function ($q) {
                     $q->whereNull('guestinfo.completed')
                         ->orWhere('guestinfo.completed', 0);
