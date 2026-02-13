@@ -132,6 +132,19 @@ Route::prefix('v2')->group(function () {
         Route::delete('delete/{id}', [ProductController::class, 'destroy']);
     });
 
+    // Route::get('reservations/fetch-bookings', [ReservationsController::class, 'fetchBookings']);
+    //     Route::get('reservations/{page}', [ReservationsController::class, 'reservations']);
+    //     Route::post('reservations', [ReservationsController::class, 'updatereservations']);
+
+    Route::prefix('reservations')->group(function () {
+        Route::get('dashboard', [ProductController::class, 'index']);
+        Route::get('collect', [ProductController::class, 'collect']);
+        Route::get('collected', [ProductController::class, 'collected']);
+        Route::get('sent', [ProductController::class, 'sentTobodyCorp']);
+        Route::get('past-completed', [ProductController::class, 'pastCompleted']);
+        Route::get('past-incompleted', [ProductController::class, 'pastIncompleted']);
+    });
+
     Route::resource('features', FeaturesController::class);
     Route::resource('extra-charges', ExtraChargesController::class);
     Route::resource('property-manager-fees', PropertyManagerFeesController::class);
