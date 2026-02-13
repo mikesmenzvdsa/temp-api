@@ -819,6 +819,7 @@ class ReservationsController extends Controller
                         ->orWhere('guestinfo.completed', 0);
                 })
                 ->whereBetween('booking.arrival_date', [$today, $fourteenDaysLater])
+                ->selectRaw('DATEDIFF(booking.departure_date, booking.arrival_date) AS nights_booked')
                 ->selectRaw(
                     "prop.name as prop_name,
                         prop.id as prop_id,
