@@ -772,7 +772,6 @@ class ReservationsController extends Controller
     {
 
         try {
-            //code...
             Log::debug("view-page");
             $fourteenDaysLater = Carbon::now()->addDays(14);
             $today = Carbon::now()->toDateString();
@@ -874,14 +873,8 @@ class ReservationsController extends Controller
             })->filter()->unique()->values();
 
             $defaultCorp = $bodyCorpDefault;
-
-            if (isset($message_sent)) {
-                return view("pages.reservations.{$page}", ['title' => 'Collect Guest Details', 'message_sent' => $message_sent, 'bookings' => $bookings, 'prop_recs' => $prop_recs, 'uniqueBookingRefs' => $uniqueBookingRefs, 'uniqueGuestNames' => $uniqueGuestNames, 'uniqueBodyCorps' => $uniqueBodyCorps, 'bodyCorpDefault' => $bodyCorpDefault, 'date' => date('Y-m-d'), 'selected_date_properties' => $selected_date_properties, 'default_bodycorp' => $defaultCorp]);
-            } else {
-                return view("pages.reservations.{$page}", ['title' => 'Collect Guest Details', 'bookings' => $bookings, 'prop_recs' => $prop_recs, 'uniqueBookingRefs' => $uniqueBookingRefs, 'uniqueGuestNames' => $uniqueGuestNames, 'uniqueBodyCorps' => $uniqueBodyCorps, 'bodyCorpDefault' => $bodyCorpDefault, 'date' => date('Y-m-d'), 'selected_date_properties' => $selected_date_properties, 'default_bodycorp' => $defaultCorp]);
-            }
             
-            return $this->corsJson(["bodycorp" => $body_corps, "rules" => $rules], 200);
+            return $this->corsJson(['title' => 'Collect Guest Details', 'bookings' => $bookings, 'prop_recs' => $prop_recs, 'uniqueBookingRefs' => $uniqueBookingRefs, 'uniqueGuestNames' => $uniqueGuestNames, 'uniqueBodyCorps' => $uniqueBodyCorps, 'bodyCorpDefault' => $bodyCorpDefault, 'date' => date('Y-m-d'), 'selected_date_properties' => $selected_date_properties, 'default_bodycorp' => $defaultCorp], 200);
         } catch (\Throwable $e) {
             if ($e instanceof HttpResponseException) {
                 return $e->getResponse();
