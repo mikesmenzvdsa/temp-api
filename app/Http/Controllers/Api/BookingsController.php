@@ -7,12 +7,18 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 
 class BookingsController extends Controller
 {
     public function index(Request $request)
     {
         return $this->notImplemented();
+    }
+
+    private function getPriceListsTableName(): string
+    {
+        return 'rahosktnfe_db1.price_lists';
     }
 
     public function show(Request $request, $id)
@@ -216,11 +222,16 @@ class BookingsController extends Controller
         foreach ($properties as $index => $prop) {
             $propAvail = null;
             if ($prop->pricelabs_id !== null) {
-                $propAvail = DB::table('price_lists')
-                    ->where('pl_id', '=', $prop->pricelabs_id)
-                    ->where('date', '>=', $startDate)
-                    ->where('date', '<=', $endDate)
-                    ->get();
+                try {
+                    $priceListsTable = $this->getPriceListsTableName();
+                    $propAvail = DB::table($priceListsTable)
+                        ->where('pl_id', '=', $prop->pricelabs_id)
+                        ->where('date', '>=', $startDate)
+                        ->where('date', '<=', $endDate)
+                        ->get();
+                } catch (\Throwable $e) {
+                    $propAvail = null;
+                }
             } elseif ($nbActive) {
                 $payload = [
                     'bbid' => (int) $prop->nb_id,
@@ -424,12 +435,21 @@ class BookingsController extends Controller
             return $this->corsJson(['code' => 400, 'message' => 'Missing required headers'], 400);
         }
 
+        // Defensive: if arrival/departure are inverted, swap them so queries use a valid range
+        try {
+            if (strtotime($arrival) > strtotime($departure)) {
+                [$arrival, $departure] = [$departure, $arrival];
+            }
+        } catch (\Throwable $e) {
+            // ignore and proceed; validation will catch invalid dates later
+        }
+
         $prop = DB::table('virtualdesigns_properties_properties')->where('id', '=', $propId)->first();
         if (!$prop) {
             return $this->corsJson(['code' => 404, 'message' => 'Property not found'], 404);
         }
 
-        if ($prop->pricelabs_id !== null) {
+            if ($prop->pricelabs_id !== null) {
             $opInfo = DB::table('virtualdesigns_operationalinformation_operationalinformation')
                 ->where('property_id', '=', $propId)
                 ->first();
@@ -440,11 +460,16 @@ class BookingsController extends Controller
                 ->where('property_id', '=', $propId)
                 ->first();
 
-            $availRows = DB::table('price_lists')
-                ->where('pl_id', '=', $prop->pricelabs_id)
-                ->where('date', '>=', $arrival)
-                ->where('date', '<=', $departure)
-                ->get();
+            try {
+                $priceListsTable = $this->getPriceListsTableName();
+                $availRows = DB::table($priceListsTable)
+                    ->where('pl_id', '=', $prop->pricelabs_id)
+                    ->where('date', '>=', $arrival)
+                    ->where('date', '<=', $departure)
+                    ->get();
+            } catch (\Throwable $e) {
+                $availRows = collect([]);
+            }
 
             $nights = 0;
             $total = 0.0;
@@ -594,9 +619,10 @@ class BookingsController extends Controller
             $cleanFee = (float) $prop->clean_fee;
 
             if ((int) $prop->country_id === 846) {
-                $currency = DB::table('price_lists')
-                    ->where('pl_id', '=', $prop->pricelabs_id)
-                    ->value('currency');
+                    $priceListsTable = $this->getPriceListsTableName();
+                    $currency = DB::table($priceListsTable)
+                        ->where('pl_id', '=', $prop->pricelabs_id)
+                        ->value('currency');
                 if ($currency === 'EUR') {
                     $conversion = (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'EUR/MUR')->value('rate');
                     $convertedPrice = $total * $conversion;
@@ -979,11 +1005,16 @@ class BookingsController extends Controller
         foreach ($properties as $index => $prop) {
             $propAvail = null;
             if ($prop->pricelabs_id !== null) {
-                $propAvail = DB::table('price_lists')
-                    ->where('pl_id', '=', $prop->pricelabs_id)
-                    ->where('date', '>=', $startDate)
-                    ->where('date', '<=', $endDate)
-                    ->get();
+                try {
+                    $priceListsTable = $this->getPriceListsTableName();
+                    $propAvail = DB::table($priceListsTable)
+                        ->where('pl_id', '=', $prop->pricelabs_id)
+                        ->where('date', '>=', $startDate)
+                        ->where('date', '<=', $endDate)
+                        ->get();
+                } catch (\Throwable $e) {
+                    $propAvail = collect([]);
+                }
             } elseif ($nbActive) {
                 $payload = [
                     'bbid' => (int) $prop->nb_id,
@@ -1376,11 +1407,16 @@ class BookingsController extends Controller
 
             $bookingAmount = (float) ($body->totalamount ?? 0);
             if ($bookingAmount <= 0 && $prop->pricelabs_id !== null) {
-                $availRows = DB::table('price_lists')
-                    ->where('pl_id', '=', $prop->pricelabs_id)
-                    ->where('date', '>=', $body->arrival)
-                    ->where('date', '<', $body->departure)
-                    ->get();
+                try {
+                    $priceListsTable = $this->getPriceListsTableName();
+                    $availRows = DB::table($priceListsTable)
+                        ->where('pl_id', '=', $prop->pricelabs_id)
+                        ->where('date', '>=', $body->arrival)
+                        ->where('date', '<', $body->departure)
+                        ->get();
+                } catch (\Throwable $e) {
+                    $availRows = collect([]);
+                }
                 $total = 0.0;
                 $currency = 'ZAR';
                 foreach ($availRows as $row) {
@@ -1404,17 +1440,22 @@ class BookingsController extends Controller
                     ]);
             }
 
-            DB::table('price_lists')
-                ->where('pl_id', '=', $prop->pricelabs_id)
-                ->where('date', '>=', $body->arrival)
-                ->where('date', '<', $body->departure)
-                ->update(['booked' => 1]);
+            try {
+                $priceListsTable = $this->getPriceListsTableName();
+                DB::table($priceListsTable)
+                    ->where('pl_id', '=', $prop->pricelabs_id)
+                    ->where('date', '>=', $body->arrival)
+                    ->where('date', '<', $body->departure)
+                    ->update(['booked' => 1]);
 
-            $bookedDates = DB::table('price_lists')
-                ->where('pl_id', '=', $prop->pricelabs_id)
-                ->where('date', '>=', $body->arrival)
-                ->where('date', '<', $body->departure)
-                ->get();
+                $bookedDates = DB::table($priceListsTable)
+                    ->where('pl_id', '=', $prop->pricelabs_id)
+                    ->where('date', '>=', $body->arrival)
+                    ->where('date', '<', $body->departure)
+                    ->get();
+            } catch (\Throwable $e) {
+                $bookedDates = collect([]);
+            }
 
             $xmlAvail = '';
             foreach ($bookedDates as $bookedDate) {
@@ -1550,7 +1591,8 @@ class BookingsController extends Controller
                             }
                         } else {
                             $lineMur = 0.0;
-                            $currency = DB::table('price_lists')
+                            $priceListsTable = $this->getPriceListsTableName();
+                            $currency = DB::table($priceListsTable)
                                 ->where('pl_id', '=', $prop->pricelabs_id)
                                 ->value('currency');
                             if ((int) $prop->country_id === 846) {
@@ -1875,11 +1917,16 @@ class BookingsController extends Controller
             ->get();
 
         if ($prop && $prop->pricelabs_id !== null) {
-            DB::table('price_lists')
-                ->where('date', '>=', $booking->arrival_date)
-                ->where('date', '<', $booking->departure_date)
-                ->where('pl_id', $prop->pricelabs_id)
-                ->update(['booked' => 0]);
+            try {
+                $priceListsTable = $this->getPriceListsTableName();
+                DB::table($priceListsTable)
+                    ->where('date', '>=', $booking->arrival_date)
+                    ->where('date', '<', $booking->departure_date)
+                    ->where('pl_id', $prop->pricelabs_id)
+                    ->update(['booked' => 0]);
+            } catch (\Throwable $e) {
+                // ignore if table not present in this connection
+            }
         }
 
         $refundRequired = $request->input('refund_required') == 1 ? 1 : 0;
@@ -2690,10 +2737,15 @@ class BookingsController extends Controller
 
         $currencyRec = null;
         if ($prop->pricelabs_id !== null) {
-            $currencyRec = DB::table('price_lists')
-                ->where('pl_id', '=', $prop->pricelabs_id)
-                ->select('currency')
-                ->first();
+            try {
+                $priceListsTable = $this->getPriceListsTableName();
+                $currencyRec = DB::table($priceListsTable)
+                    ->where('pl_id', '=', $prop->pricelabs_id)
+                    ->select('currency')
+                    ->first();
+            } catch (\Throwable $e) {
+                $currencyRec = null;
+            }
         }
         $currency = $currencyRec->currency ?? 'ZAR';
 
@@ -3047,17 +3099,22 @@ class BookingsController extends Controller
 
         $prop = DB::table('virtualdesigns_properties_properties')->where('id', '=', $booking->property_id)->first();
         if ($prop && $prop->pricelabs_id !== null) {
-            DB::table('price_lists')
-                ->where('pl_id', '=', $prop->pricelabs_id)
-                ->where('date', '>=', $booking->arrival_date)
-                ->where('date', '<', $booking->departure_date)
-                ->update(['booked' => 1]);
+            try {
+                $priceListsTable = $this->getPriceListsTableName();
+                DB::table($priceListsTable)
+                    ->where('pl_id', '=', $prop->pricelabs_id)
+                    ->where('date', '>=', $booking->arrival_date)
+                    ->where('date', '<', $booking->departure_date)
+                    ->update(['booked' => 1]);
 
-            $bookedDates = DB::table('price_lists')
-                ->where('pl_id', '=', $prop->pricelabs_id)
-                ->where('date', '>=', $booking->arrival_date)
-                ->where('date', '<', $booking->departure_date)
-                ->get();
+                $bookedDates = DB::table($priceListsTable)
+                    ->where('pl_id', '=', $prop->pricelabs_id)
+                    ->where('date', '>=', $booking->arrival_date)
+                    ->where('date', '<', $booking->departure_date)
+                    ->get();
+            } catch (\Throwable $e) {
+                $bookedDates = collect([]);
+            }
 
             $xmlAvail = '';
             foreach ($bookedDates as $bookedDate) {
