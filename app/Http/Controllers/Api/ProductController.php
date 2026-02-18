@@ -194,52 +194,58 @@ class ProductController extends Controller
     {
         try {
 
-            if ($request->body_corp_full_names_required == 1) {
-                $body_corp_full_names_required = 1;
+            if ($request->body_corp_full_names_required) {
+                $body_corp_full_names_required = '1';
             } else {
-                $body_corp_full_names_required = 0;
+                $body_corp_full_names_required = '0';
             }
 
-            if ($request->body_corp_vehicle_reg_required == 1) {
-                $body_corp_vehicle_reg_required = 1;
+            if ($request->body_corp_vehicle_reg_required) {
+                $body_corp_vehicle_reg_required = '1';
             } else {
-                $body_corp_vehicle_reg_required = 0;
+                $body_corp_vehicle_reg_required = '0';
             }
 
-            if ($request->body_corp_id_selfies_required == 1) {
-                $body_corp_id_selfies_required = 1;
+            if ($request->body_corp_id_selfies_required) {
+                $body_corp_id_selfies_required = '1';
             } else {
-                $body_corp_id_selfies_required = 0;
+                $body_corp_id_selfies_required = '0';
             }
 
-            if ($request->body_corp_all_guest_contacts_required == 1) {
-                $body_corp_all_guest_contacts_required = 1;
+            if ($request->body_corp_all_guest_contacts_required) {
+                $body_corp_all_guest_contacts_required = '1';
             } else {
-                $body_corp_all_guest_contacts_required = 0;
+                $body_corp_all_guest_contacts_required = '0';
             }
 
-            if ($request->body_corp_all_guest_id_img_required == 1) {
-                $body_corp_all_guest_id_img_required = 1;
+            if ($request->body_corp_all_guest_id_img_required) {
+                $body_corp_all_guest_id_img_required = '1';
             } else {
-                $body_corp_all_guest_id_img_required = 0;
+                $body_corp_all_guest_id_img_required = '0';
             }
 
-            if ($request->body_corp_main_guest_name_and_phone_number_required == 1) {
-                $body_corp_main_guest_name_and_phone_number_required = 1;
+            if ($request->body_corp_main_guest_name_and_phone_number_required) {
+                $body_corp_main_guest_name_and_phone_number_required = '1';
             } else {
-                $body_corp_main_guest_name_and_phone_number_required = 0;
+                $body_corp_main_guest_name_and_phone_number_required = '0';
             }
 
-            if ($request->main_guest_name_phone_number_and_id_number_image_upload_required == 1) {
+            if ($request->main_guest_name_phone_number_and_id_number_image_upload_required) {
                 $main_guest_name_phone_number_and_id_number_image_upload_required = 1;
+                $body_corp_full_names_required = '0';
+                $body_corp_vehicle_reg_required = '0';
+                $body_corp_id_selfies_required = '0';
+                $body_corp_all_guest_contacts_required = '0';
+                $body_corp_all_guest_id_img_required = '0';
+                $body_corp_main_guest_name_and_phone_number_required = '0';
             } else {
-                $main_guest_name_phone_number_and_id_number_image_upload_required = 0;
+                $main_guest_name_phone_number_and_id_number_image_upload_required = '0';
             }
 
-            if ($request->body_corp_to_send == 1) {
-                $body_corp_to_send = 1;
+            if ($request->body_corp_to_send) {
+                $body_corp_to_send = '1';
             } else {
-                $body_corp_to_send = 0;
+                $body_corp_to_send = '0';
             }
 
             $body_corp_emails = array();
@@ -250,7 +256,10 @@ class ProductController extends Controller
                 $emails_inc = $emails_inc + 1;
             }
 
-            DB::connection('remote_test')->table('virtualdesigns_bodycorp_bodycorp')
+            $oldRecord = DB::table('virtualdesigns_bodycorp_bodycorp')
+                ->where('id', '=', $id)->first();
+
+            $updateRecord =  DB::table('virtualdesigns_bodycorp_bodycorp')
                 ->where('id', '=', $id)
                 ->where('deleted_at', '=', null)
                 ->update([
@@ -258,20 +267,46 @@ class ProductController extends Controller
                     "body_corp_name" => $request->body_corp_name,
                     "body_corp_phone" => $request->body_corp_phone,
                     "body_corp_contact_person" => $request->body_corp_contact_person,
-                    "body_corp_emails" => json_encode($body_corp_emails),
-                    "notes" => $request->body_corp_notes,
-                    "body_corp_full_names_required" => $body_corp_full_names_required,
-                    "body_corp_to_send" => $body_corp_to_send,
-                    "body_corp_vehicle_reg_required" => $body_corp_vehicle_reg_required,
-                    "body_corp_id_selfies_required" => $body_corp_id_selfies_required,
-                    "body_corp_all_guest_contacts_required" => $body_corp_all_guest_contacts_required,
-                    "body_corp_all_guest_id_img_required" => $body_corp_all_guest_id_img_required,
-                    "body_corp_main_guest_name_and_phone_number_required" => $body_corp_main_guest_name_and_phone_number_required,
-                    "main_guest_name_phone_number_and_id_number_image_upload_required" => $main_guest_name_phone_number_and_id_number_image_upload_required,
-                    "created_at" => date("Y-m-d H:i:s")
+                    "body_corp_emails" => null,
+                    "notes" => $request->notes,
+                    "body_corp_full_names_required" => +$body_corp_full_names_required,
+                    "body_corp_to_send" => +$body_corp_to_send,
+                    "body_corp_vehicle_reg_required" => +$body_corp_vehicle_reg_required,
+                    "body_corp_id_selfies_required" => +$body_corp_id_selfies_required,
+                    "body_corp_all_guest_contacts_required" => +$body_corp_all_guest_contacts_required,
+                    "body_corp_all_guest_id_img_required" => +$body_corp_all_guest_id_img_required,
+                    "body_corp_main_guest_name_and_phone_number_required" => +$body_corp_main_guest_name_and_phone_number_required,
+                    "main_guest_name_phone_number_and_id_number_image_upload_required" => +$main_guest_name_phone_number_and_id_number_image_upload_required,
+                    "updated_at" => date("Y-m-d H:i:s")
                 ]);
 
+            $newRecord = DB::table('virtualdesigns_bodycorp_bodycorp')
+                ->where('id', '=', $id)->first();
 
+            $oldArray = (array) $oldRecord;
+            $newArray = (array) $newRecord;
+
+            
+            $differencesOld = array_diff_assoc($oldArray, $newArray);
+            $differencesNew = array_diff_assoc($newArray, $oldArray);
+            $fields = array_keys($differencesNew);
+
+            if ($updateRecord) {
+
+                $changes = DB::table('virtualdesigns_changes_changes')
+                    ->insert([
+                        'user_id' => "1",
+                        'db_table' => "179",
+                        'record_id' => "179",
+                        'field' => json_encode($fields),
+                        'old' => json_encode($differencesOld),
+                        'new' => json_encode($differencesNew),
+                        'change_date' => date("Y-m-d H:i:s"),
+                        'user_name' => "Ryno Fourie",
+                    ]);
+            }
+
+            Log::debug('Record updated');
             $body_corps = DB::table('virtualdesigns_bodycorp_bodycorp')
                 ->where('virtualdesigns_bodycorp_bodycorp.deleted_at', '=', null)
                 ->get();
@@ -286,9 +321,6 @@ class ProductController extends Controller
             });
 
             return $this->corsJson(["message" => "Body Corporate Updated Succesfully", "bodycorps" => $bodycorps, "success" => true], 200);
-
-            view("pages.product.check-in-rules", ['message_sent' => $message_sent, 'body_corps' => $body_corps]);
-            return redirect()->back()->with('message_sent', $message_sent);
         } catch (\Throwable $e) {
             if ($e instanceof HttpResponseException) {
                 return $e->getResponse();
