@@ -366,7 +366,8 @@ class TasksController extends Controller
         } else {
             $inventory = DB::table('virtualdesigns_property_inventories')
                 ->where('property_id', '=', $cleanRec->property_id)
-                ->orderBy('id', 'desc')
+                ->orderBy('updated_at', 'desc')
+                ->orderBy('created_at', 'desc')
                 ->first();
             $clean[0]->inv_url = $inventory->inv_url ?? null;
         }
@@ -434,11 +435,16 @@ class TasksController extends Controller
         return $this->corsJson([], 200);
     }
 
-    public function update(Request $request, int $id): JsonResponse
+    public function update(Request $request, $id): JsonResponse
     {
         $this->assertApiKey($request);
+        // Allow non-int route parameters (frontend may send 'undefined') and validate/cast here
+        $idInt = (int) $id;
+        if ($idInt <= 0) {
+            return $this->corsJson(['code' => 400, 'message' => 'Invalid task id'], 400);
+        }
 
-        $cleanRec = DB::table($this->cleansTable)->where('id', '=', $id)->first();
+        $cleanRec = DB::table($this->cleansTable)->where('id', '=', $idInt)->first();
         if ($cleanRec === null) {
             return $this->corsJson(['code' => 404, 'message' => 'Task not found'], 404);
         }
@@ -474,7 +480,7 @@ class TasksController extends Controller
         }
 
         if (!empty($updates)) {
-            DB::table($this->cleansTable)->where('id', '=', $id)->update($updates);
+            DB::table($this->cleansTable)->where('id', '=', $idInt)->update($updates);
         }
 
         $clean = DB::table($this->cleansTable)
@@ -482,7 +488,7 @@ class TasksController extends Controller
             ->leftJoin('users as supplier', $this->cleansTable . '.supplier_id', '=', 'supplier.id')
             ->leftJoin('virtualdesigns_erpbookings_erpbookings as booking', $this->cleansTable . '.booking_id', '=', 'booking.id')
             ->leftJoin('virtualdesigns_operationalinformation_operationalinformation as opinfo', $this->cleansTable . '.property_id', '=', 'opinfo.property_id')
-            ->where($this->cleansTable . '.id', '=', $id)
+            ->where($this->cleansTable . '.id', '=', $idInt)
             ->select(
                 'booking.no_guests',
                 'opinfo.checkin_info',
@@ -513,7 +519,8 @@ class TasksController extends Controller
         if ($clean->isNotEmpty()) {
             $inventory = DB::table('virtualdesigns_property_inventories')
                 ->where('property_id', '=', $cleanRec->property_id)
-                ->orderBy('id', 'desc')
+                ->orderBy('updated_at', 'desc')
+                ->orderBy('created_at', 'desc')
                 ->first();
 
             $clean[0]->inv_url = $inventory->inv_url ?? null;
