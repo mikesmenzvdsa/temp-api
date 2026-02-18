@@ -1626,12 +1626,12 @@ class BookingsController extends Controller
                         }
                     }
                 }
-
-                if ($bookingType === 'booking' && (int) $prop->country_id === 854) {
+                $tx_prop = DB::table('virtualdesigns_properties_properties')->where('id','=',$prop->id)->first();
+                if ($bookingType === 'booking' && (int) $tx_prop->country_id === 854) {
                     $startTs = strtotime($body->arrival);
                     $endTs = strtotime($body->departure);
                     $nights = round(($endTs - $startTs) / 86400);
-                    $tax = ($prop->bedroom_num * 10) * min($nights, 30);
+                    $tax = ($tx_prop->bedroom_num * 10) * min($nights, 30);
                     DB::table('virtualdesigns_erpbookings_fees')->insert([
                         'description' => 'Tourist Tax',
                         'arrival_date' => $body->arrival,
