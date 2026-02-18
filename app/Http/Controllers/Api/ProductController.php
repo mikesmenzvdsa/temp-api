@@ -286,7 +286,7 @@ class ProductController extends Controller
             $oldArray = (array) $oldRecord;
             $newArray = (array) $newRecord;
 
-            
+
             $differencesOld = array_diff_assoc($oldArray, $newArray);
             $differencesNew = array_diff_assoc($newArray, $oldArray);
             $fields = array_keys($differencesNew);
@@ -332,24 +332,17 @@ class ProductController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Request $request, string $id)
+    public function destroy(string $id)
     {
         try {
-            if ($request->deleted) {
+            if (isset($id)) {
+                Log::debug("xxxx");
                 $delete_body_corps = DB::table('virtualdesigns_bodycorp_bodycorp')
-                    ->where('id', '=', $id)
-                    ->update(['deleted_at' => date("Y-m-d H:i:s")]);
-
-
-                $bodycorps = DB::connection('remote_test')
-                    ->table('virtualdesigns_bodycorp_bodycorp')
-                    ->where('deleted_at', '=', null)
-                    ->get();
-
+                ->where('id', '=', $id)
+                ->update(['deleted_at' => date("Y-m-d H:i:s")]);
+                
                 if ($delete_body_corps === 1) {
-                    return $this->corsJson(["message" => "Body Corporate Deleted Succesfully", "deleted" => true, "bodycorps" => $bodycorps], 200);
-                } else {
-                    return $this->corsJson(["message" => "Body Corporate Failed To Deleted", "deleted" => false, "bodycorps" => []], 200);
+                    return $this->corsJson(["message" => "Body Corporate Deleted Succesfully", "deleted" => true], 200);
                 }
             }
         } catch (\Throwable $e) {
