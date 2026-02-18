@@ -15,12 +15,12 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'broadcasting/auth'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'broadcasting/auth', 'login', 'logout', 'me'],
 
     'allowed_methods' => ['*'],
 
     'allowed_origins' => array_filter(
-        array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:5173')))
+        array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:5173, http://localhost:3000')))
     ),
 
     'allowed_origins_patterns' => [],

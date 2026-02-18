@@ -57,8 +57,24 @@ class LoginController extends Controller
 
             if (Auth::guard($guard)->attempt($credentials, $remember)) {
                 $request->session()->regenerate();
+
+                // If this is an XHR / API request, return JSON instead of issuing an HTTP redirect
+                if ($request->expectsJson()) {
+                    $user = Auth::guard($guard)->user();
+                    return response()->json([
+                        'id' => $user->getAuthIdentifier(),
+                        'guard' => Auth::getDefaultDriver(),
+                        'name' => $user->name,
+                        'email' => $user->email,
+                    ]);
+                }
+
                 return redirect()->intended('/me');
             }
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => 'These credentials do not match our records.'], 422);
         }
 
         return back()->withErrors([
@@ -71,6 +87,10 @@ class LoginController extends Controller
         Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true]);
+        }
 
         return redirect('/login');
     }
