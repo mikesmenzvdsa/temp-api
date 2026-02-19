@@ -119,6 +119,28 @@ class BookingsController extends Controller
                 ->where('booking.departure_date', '>', $today);
         }
 
+        // Optional filter: only bookings with guest details collected
+        $guestDetailsCollected = strtolower((string) ($request->input('guestDetailsCollected') ?? $request->header('guestdetailscollected') ?? 'false')) === 'true';
+        if ($guestDetailsCollected) {
+            $baseQuery->where(function ($q) {
+                $q->where('guestinfo.completed', '=', 1)
+                    ->orWhereNotNull('guestinfo.guest_id')
+                    ->orWhereNotNull('guestinfo.guest_name')
+                    ->orWhereNotNull('booking.client_email');
+            });
+        }
+
+        // Pagination parameters (query or header)
+        $perPage = (int) ($request->input('perPage') ?? $request->header('perpage') ?? 25);
+        $page = (int) ($request->input('page') ?? $request->header('page') ?? 1);
+
+        // total count for pagination
+        try {
+            $total = (int) $baseQuery->count();
+        } catch (\Throwable $e) {
+            $total = null;
+        }
+
         $bookings = $baseQuery->select(
             'booking.*',
             'property.name as prop_name',
@@ -131,7 +153,7 @@ class BookingsController extends Controller
             'salesperson.surname as salesperson_surname',
             'salesperson.email as salesperson_email',
             'salesperson.id as salesperson_id'
-        )->get();
+        )->offset(max(0, ($page - 1) * max(1, $perPage)))->limit(max(1, $perPage))->get();
 
         if ($overlap) {
             $overlapIds = [];
@@ -200,7 +222,16 @@ class BookingsController extends Controller
             }
         }
 
-        return $this->corsJson($bookings, 200);
+        $response = [
+            'data' => $bookings,
+            'meta' => [
+                'total' => $total,
+                'page' => $page,
+                'perPage' => $perPage,
+            ],
+        ];
+
+        return $this->corsJson($response, 200);
     }
 
     private function loadAvailabilityData(string $startDate, string $endDate, array $propIds): array
