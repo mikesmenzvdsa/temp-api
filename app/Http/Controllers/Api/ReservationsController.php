@@ -793,7 +793,7 @@ class ReservationsController extends Controller
 
         try {
             Log::debug("Collect Guest Details");
-            
+
             $fourteenDaysLater = Carbon::now()->addDays(14);
             $today = Carbon::now()->toDateString();
 
@@ -895,8 +895,121 @@ class ReservationsController extends Controller
             })->filter()->unique()->values();
 
             $defaultCorp = $bodyCorpDefault;
-            
+
             return $this->corsJson(['title' => 'Collect Guest Details', 'bookings' => $bookings, 'prop_recs' => $prop_recs, 'uniqueBookingRefs' => $uniqueBookingRefs, 'uniqueGuestNames' => $uniqueGuestNames, 'uniqueBodyCorps' => $uniqueBodyCorps, 'bodyCorpDefault' => $bodyCorpDefault, 'date' => date('Y-m-d'), 'selected_date_properties' => $selected_date_properties, 'default_bodycorp' => $defaultCorp], 200);
+        } catch (\Throwable $e) {
+            if ($e instanceof HttpResponseException) {
+                return $e->getResponse();
+            }
+            return $this->corsJson(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function storeGuestBooking(Request $request)
+    {
+        try {
+            Log::debug("request: ", $request);
+            $getOldGuestInfo = DB::table('virtualdesigns_erpbookings_guestinfo')
+                ->where('booking_id', '=', $request->guest_booking_id)
+                ->select(
+                    "id",
+                    "guest_name",
+                    "guest_id_no",
+                    "guest_contact",
+                    "guest_no",
+                    "vehicle_reg",
+                    "completed",
+                    "booking_id",
+                    "guest_alternative_email_address",
+                    "guest_id",
+                    "other_guests_data",
+                    "mail_sent_to_body_corp",
+                    "selfie_image_path",
+                    "available_vehicle_status",
+                )->get();
+
+                Log::debug($getOldGuestInfo);
+
+            // $this->assertApiKey($request);
+            // Log::debug($request);
+
+            // if ($request->body_corp_full_names_required == 1) {
+            //     $body_corp_full_names_required = 1;
+            // } else {
+            //     $body_corp_full_names_required = 0;
+            // }
+
+            // if ($request->body_corp_vehicle_reg_required == 1) {
+            //     $body_corp_vehicle_reg_required = 1;
+            // } else {
+            //     $body_corp_vehicle_reg_required = 0;
+            // }
+
+            // if ($request->body_corp_id_selfies_required == 1) {
+            //     $body_corp_id_selfies_required = 1;
+            // } else {
+            //     $body_corp_id_selfies_required = 0;
+            // }
+
+            // if ($request->body_corp_all_guest_contacts_required == 1) {
+            //     $body_corp_all_guest_contacts_required = 1;
+            // } else {
+            //     $body_corp_all_guest_contacts_required = 0;
+            // }
+
+            // if ($request->body_corp_all_guest_id_img_required == 1) {
+            //     $body_corp_all_guest_id_img_required = 1;
+            // } else {
+            //     $body_corp_all_guest_id_img_required = 0;
+            // }
+
+            // if ($request->body_corp_main_guest_name_and_phone_number_required == 1) {
+            //     $body_corp_main_guest_name_and_phone_number_required = 1;
+            // } else {
+            //     $body_corp_main_guest_name_and_phone_number_required = 0;
+            // }
+
+            // if ($request->main_guest_name_phone_number_and_id_number_image_upload_required == 1) {
+            //     $main_guest_name_phone_number_and_id_number_image_upload_required = 1;
+            // } else {
+            //     $main_guest_name_phone_number_and_id_number_image_upload_required = 0;
+            // }
+
+
+            // if ($request->body_corp_to_send == 1) {
+            //     $body_corp_to_send = 1;
+            // } else {
+            //     $body_corp_to_send = 0;
+            // }
+
+
+            // $body_corp_emails = array();
+            // $emails_inc = 0;
+
+            // if (isset($request->body_corp_email) && $request->body_corp_email !== "") {
+            //     array_push($body_corp_emails, $request->body_corp_email);
+            // }
+
+            // $insertBodyCorp = DB::table('virtualdesigns_bodycorp_bodycorp')
+            //     ->insert([
+            //         "rule_name" => $request->rule_name,
+            //         "body_corp_name" => $request->body_corp_name,
+            //         "body_corp_phone" => $request->body_corp_phone,
+            //         "body_corp_contact_person" => $request->body_corp_contact_person,
+            //         "body_corp_emails" => json_encode($body_corp_emails),
+            //         "notes" => $request->notes,
+            //         "body_corp_to_send" => $body_corp_to_send,
+            //         "body_corp_full_names_required" => $body_corp_full_names_required,
+            //         "body_corp_vehicle_reg_required" => $body_corp_vehicle_reg_required,
+            //         "body_corp_id_selfies_required" => $body_corp_id_selfies_required,
+            //         "body_corp_all_guest_contacts_required" => $body_corp_all_guest_contacts_required,
+            //         "body_corp_all_guest_id_img_required" => $body_corp_all_guest_id_img_required,
+            //         "body_corp_main_guest_name_and_phone_number_required" => $body_corp_main_guest_name_and_phone_number_required,
+            //         "main_guest_name_phone_number_and_id_number_image_upload_required" => $main_guest_name_phone_number_and_id_number_image_upload_required,
+            //         "created_at" => date("Y-m-d H:i:s")
+            //     ]);
+
+            // return $this->corsJson(["message" => $insertBodyCorp], 200);
         } catch (\Throwable $e) {
             if ($e instanceof HttpResponseException) {
                 return $e->getResponse();

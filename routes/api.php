@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\TasksController;
 use App\Http\Controllers\Api\ErrorLogsController;
 use App\Http\Controllers\API\ProductController;
 use App\Http\Controllers\API\ReservationsController;
+use Illuminate\Support\Facades\Log;
 
 /*
 |--------------------------------------------------------------------------
@@ -133,13 +134,12 @@ Route::prefix('v2')->group(function () {
         Route::delete('delete/{id}', [ProductController::class, 'destroy']);
     });
 
-    // Route::get('reservations/fetch-bookings', [ReservationsController::class, 'fetchBookings']);
-    //     Route::get('reservations/{page}', [ReservationsController::class, 'reservations']);
-    //     Route::post('reservations', [ReservationsController::class, 'updatereservations']);
-
     Route::prefix('reservations')->group(function () {
         Route::get('dashboard', [ReservationsController::class, 'index']);
         Route::get('collect', [ReservationsController::class, 'collect']);
+        Log::debug("Reached");
+        Route::post('collect/insert', [ReservationsController::class, 'storeGuestBooking']);
+        Route::post('collect/update/{id}', [ReservationsController::class, 'updateGuestBooking']);
         Route::get('collected', [ReservationsController::class, 'collected']);
         Route::get('sent', [ReservationsController::class, 'sentTobodyCorp']);
         Route::get('past-completed', [ReservationsController::class, 'pastCompleted']);
