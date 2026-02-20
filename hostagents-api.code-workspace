@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../../laragon/www/plugins"
+		},
+		{
+			"path": "../red-frontend-vite"
+		},
+		{
+			"path": "../Documents/red-nextjs-shadcn"
+		}
+	]
+}
