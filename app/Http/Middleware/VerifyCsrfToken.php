@@ -15,5 +15,6 @@ class VerifyCsrfToken extends Middleware
         'broadcasting/auth',
         'login',
         'logout',
+        'me',  // Allow /me to bypass CSRF for token-based auth
     ];
 }
