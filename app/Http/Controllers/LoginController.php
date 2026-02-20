@@ -111,7 +111,6 @@ class LoginController extends Controller
             'guard' => Auth::getDefaultDriver(),
             'name' => $user?->name,
             'email' => $user?->email,
-                        'token' => $token,
         ]);
     }
 }
