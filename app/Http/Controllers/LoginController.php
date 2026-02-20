@@ -61,11 +61,14 @@ class LoginController extends Controller
                 // If this is an XHR / API request, return JSON instead of issuing an HTTP redirect
                 if ($request->expectsJson()) {
                     $user = Auth::guard($guard)->user();
+                    // Generate a Sanctum personal access token for the API
+                    $token = $user->createToken("api-token")->plainTextToken;
                     return response()->json([
                         'id' => $user->getAuthIdentifier(),
                         'guard' => Auth::getDefaultDriver(),
                         'name' => $user->name,
                         'email' => $user->email,
+                        'token' => $token,
                     ]);
                 }
 
@@ -84,6 +87,10 @@ class LoginController extends Controller
 
     public function logout(Request $request)
     {
+        // Revoke current Sanctum token if authenticated
+        if ($request->user()) {
+            $request->user()->currentAccessToken()?->delete();
+        }
         Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
@@ -104,6 +111,11 @@ class LoginController extends Controller
             'guard' => Auth::getDefaultDriver(),
             'name' => $user?->name,
             'email' => $user?->email,
+                        'token' => $token,
         ]);
     }
 }
+
+
+
+
