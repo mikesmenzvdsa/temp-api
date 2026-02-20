@@ -908,7 +908,6 @@ class ReservationsController extends Controller
     public function storeGuestBooking(Request $request)
     {
         try {
-            Log::debug("request: ", $request);
             $getOldGuestInfo = DB::table('virtualdesigns_erpbookings_guestinfo')
                 ->where('booking_id', '=', $request->guest_booking_id)
                 ->select(
@@ -928,86 +927,307 @@ class ReservationsController extends Controller
                     "available_vehicle_status",
                 )->get();
 
-                Log::debug($getOldGuestInfo);
 
-            // $this->assertApiKey($request);
-            // Log::debug($request);
+            if (isset($request->guest_booking_id) && isset($request->collect_guest_details_completed_status)) {
+                Log::debug("Collect Guest Details Completed Status");
 
-            // if ($request->body_corp_full_names_required == 1) {
-            //     $body_corp_full_names_required = 1;
-            // } else {
-            //     $body_corp_full_names_required = 0;
-            // }
+                $bodyCorpRule = DB::table('virtualdesigns_erpbookings_erpbookings as booking')
+                    ->Leftjoin('virtualdesigns_properties_properties as prop', 'booking.property_id', '=', 'prop.id')
+                    ->where('booking.id', '=', $request->guest_booking_id)
+                    ->select("booking.id", "prop.id as property_id", "prop.bodycorp_id")
+                    ->get();
 
-            // if ($request->body_corp_vehicle_reg_required == 1) {
-            //     $body_corp_vehicle_reg_required = 1;
-            // } else {
-            //     $body_corp_vehicle_reg_required = 0;
-            // }
+                Log::debug($bodyCorpRule);
 
-            // if ($request->body_corp_id_selfies_required == 1) {
-            //     $body_corp_id_selfies_required = 1;
-            // } else {
-            //     $body_corp_id_selfies_required = 0;
-            // }
+                // Checking if guest rulle is null if it is null I am setting the default guest rule to the property.
+                if ($bodyCorpRule[0]->bodycorp_id == null) {
+                    DB::table('virtualdesigns_properties_properties')
+                        ->where('id', '=', $bodyCorpRule[0]->property_id)
+                        ->update(['bodycorp_id' => 1]);
+                }
 
-            // if ($request->body_corp_all_guest_contacts_required == 1) {
-            //     $body_corp_all_guest_contacts_required = 1;
-            // } else {
-            //     $body_corp_all_guest_contacts_required = 0;
-            // }
+                $updateData = [];
+                $grouped = [];
+                $groupArrayWithoutNumberedIndex = [];
 
-            // if ($request->body_corp_all_guest_id_img_required == 1) {
-            //     $body_corp_all_guest_id_img_required = 1;
-            // } else {
-            //     $body_corp_all_guest_id_img_required = 0;
-            // }
+                if ($request->send_guest_registration === 'Primary Guest Details') {
 
-            // if ($request->body_corp_main_guest_name_and_phone_number_required == 1) {
-            //     $body_corp_main_guest_name_and_phone_number_required = 1;
-            // } else {
-            //     $body_corp_main_guest_name_and_phone_number_required = 0;
-            // }
+                    if ($request->filled('guest_booking_id')) {
+                        $updateData['booking_id'] = $request->guest_booking_id;
+                    }
+                    // Here is a comparison condition
+                    Log::debug("Does old guestinfo booking exist-2");
+                    if (count($getOldGuestInfo) > 0) {
+                        Log::debug("Yes, old guestinfo booking exist-2");
+                        // This comparison should be based on the old get info of the guestinfo bookings table
+                        if ($request->filled('guest_number_of_guest')) {
+                            if (strcasecmp($getOldGuestInfo[0]->no_guests, $request->guest_number_of_guest) !== 0) {
+                                $updateData['guest_no'] = $request->guest_number_of_guest;
+                            } elseif (strcasecmp($getOldGuestInfo[0]->no_guests, $getOldGuestInfo[0]->guest_no) !== 0) {
+                                $updateData['guest_no'] = $request->guest_number_of_guest;
+                            } else {
+                                $updateData['guest_no'] = $request->guest_number_of_guest;
+                            }
+                        }
+                        if ($request->filled('guest_fullname')) {
+                            if (strcasecmp($getOldGuestInfo[0]->client_name, $request->guest_fullname) !== 0) {
+                                $updateData['guest_name'] = $request->guest_fullname;
+                            }
+                        }
+                        if ($request->filled('guest_phone_number')) {
+                            if (strcasecmp($getOldGuestInfo[0]->client_phone, $request->guest_phone_number) !== 0) {
+                                $updateData['guest_contact'] = $request->guest_phone_number;
+                            }
+                        }
+                        if ($request->filled('guest_email')) {
+                            if (strcasecmp($getOldGuestInfo[0]->client_email, $request->guest_email) !== 0) {
+                                $updateData['guest_email'] = $request->guest_email;
+                            }
+                        }
+                        if ($request->filled('guest_id_number')) {
+                            if (strcasecmp($getOldGuestInfo[0]->guest_id_no, $request->guest_id_number) !== 0) {
+                                $updateData['guest_id_no'] = $request->guest_id_number;
+                            }
+                        }
+                    } else {
+                        Log::debug("Nope, old guestinfo booking does not exist-2");
+                        if ($request->filled('guest_number_of_guest')) {
+                            $updateData['guest_no'] = $request->guest_number_of_guest;
+                        }
+                        if ($request->filled('guest_fullname')) {
+                            $updateData['guest_name'] = $request->guest_fullname;
+                        }
+                        if ($request->filled('guest_phone_number')) {
+                            $updateData['guest_contact'] = $request->guest_phone_number;
+                        }
+                        if ($request->filled('guest_email')) {
+                            $updateData['guest_email'] = $request->guest_email;
+                        }
+                        if ($request->filled('guest_id_number')) {
+                            $updateData['guest_id_no'] = $request->guest_id_number;
+                        }
+                    }
 
-            // if ($request->main_guest_name_phone_number_and_id_number_image_upload_required == 1) {
-            //     $main_guest_name_phone_number_and_id_number_image_upload_required = 1;
-            // } else {
-            //     $main_guest_name_phone_number_and_id_number_image_upload_required = 0;
-            // }
+                    if ($request->filled('guest_vehicle_registration_number')) {
+                        $updateData['vehicle_reg'] = $request->guest_vehicle_registration_number;
+                    }
 
+                    if ($request->collect_guest_details_completed_status === 'on') {
+                        $updateData['completed'] = 1;
+                    }
 
-            // if ($request->body_corp_to_send == 1) {
-            //     $body_corp_to_send = 1;
-            // } else {
-            //     $body_corp_to_send = 0;
-            // }
+                    if ($request->filled('available_vehicle_status')) {
+                        if ($request->available_vehicle_status == 'on') {
+                            $updateData['available_vehicle_status'] = 1;
+                        } else {
+                            $updateData['available_vehicle_status'] = 0;
+                        }
+                    }
+                    Log::debug('$updateData-1-');
+                        Log::debug($updateData);
+                        Log::debug('$updateData-1-');
 
+                    // On the following condition we are saving the image to the server. Then we will be using the image path and saving it on the database
+                    if ($request->hasFile('guest_id_image_upload_form_file')) {
+                        $file = $request->file('guest_id_image_upload_form_file');
+                        $extension = $file->getClientOriginalExtension();
+                        $filename = $request->guest_booking_ref . '-guestid-test.' . $extension;
+                        // Upload to FTP/SFTP
+                        $disk = Storage::disk('ftp'); // or 'sftp'
+                        $disk->putFileAs('images', $file, $filename);
 
-            // $body_corp_emails = array();
-            // $emails_inc = 0;
+                        $idImagePath = 'images/' . $filename;
+                        $updateData['guest_id'] = env('FTP_ROOT_PATH') . '/' . $idImagePath;
+                    }
 
-            // if (isset($request->body_corp_email) && $request->body_corp_email !== "") {
-            //     array_push($body_corp_emails, $request->body_corp_email);
-            // }
+                    if ($request->hasFile('guest_vehicle_registration_image_upload_form_file')) {
+                        $file = $request->file('guest_vehicle_registration_image_upload_form_file');
+                        $extension = $file->getClientOriginalExtension();
+                        $filename = $request->guest_booking_ref . '-guest-vehicle-reg-test.' . $extension;
+                        // Upload to FTP/SFTP
+                        $disk = Storage::disk('ftp'); // or 'sftp'
+                        $disk->putFileAs('images', $file, $filename);
+                        $vehicleImagePath = 'images/' . $filename;
+                        $updateData['vehicle_image_path'] = env('FTP_ROOT_PATH') . '/' . $vehicleImagePath;
+                    }
 
-            // $insertBodyCorp = DB::table('virtualdesigns_bodycorp_bodycorp')
-            //     ->insert([
-            //         "rule_name" => $request->rule_name,
-            //         "body_corp_name" => $request->body_corp_name,
-            //         "body_corp_phone" => $request->body_corp_phone,
-            //         "body_corp_contact_person" => $request->body_corp_contact_person,
-            //         "body_corp_emails" => json_encode($body_corp_emails),
-            //         "notes" => $request->notes,
-            //         "body_corp_to_send" => $body_corp_to_send,
-            //         "body_corp_full_names_required" => $body_corp_full_names_required,
-            //         "body_corp_vehicle_reg_required" => $body_corp_vehicle_reg_required,
-            //         "body_corp_id_selfies_required" => $body_corp_id_selfies_required,
-            //         "body_corp_all_guest_contacts_required" => $body_corp_all_guest_contacts_required,
-            //         "body_corp_all_guest_id_img_required" => $body_corp_all_guest_id_img_required,
-            //         "body_corp_main_guest_name_and_phone_number_required" => $body_corp_main_guest_name_and_phone_number_required,
-            //         "main_guest_name_phone_number_and_id_number_image_upload_required" => $main_guest_name_phone_number_and_id_number_image_upload_required,
-            //         "created_at" => date("Y-m-d H:i:s")
-            //     ]);
+                    if ($request->hasFile('guest_selfie_image_upload_form_file')) {
+                        $file = $request->file('guest_selfie_image_upload_form_file');
+                        $extension = $file->getClientOriginalExtension();
+                        $filename = $request->guest_booking_ref . '-guest-selfie-image-test.' . $extension;
+                        // Upload to FTP/SFTP
+                        $disk = Storage::disk('ftp'); // or 'sftp'
+                        $disk->putFileAs('images', $file, $filename);
+                        $vehicleImagePath = 'images/' . $filename;
+                        $updateData['selfie_image_path'] = env('FTP_ROOT_PATH') . '/' . $vehicleImagePath;
+                    }
+
+                    if (count($getOldGuestInfo) === 0) {
+                        $updateData['created_at'] = date('Y-m-d H:i:s');
+                    }
+                }
+
+                if ((int)$request->guest_number_of_guest > 1) {
+                    foreach ($request->all() as $key => $value) {
+                        // Check if key ends with an underscore followed by a number
+
+                        if (preg_match('/_(\d+)$/', $key, $matches)) {
+                            $index = $matches[1]; // e.g., "2"
+                            // Initialize group if it doesn't exist yet
+                            if (!isset($grouped[$index])) {
+                                $grouped[$index] = [];
+                            }
+                            // Add the key–value pair to the correct group
+                            $grouped[$index][$key] = $value;
+                        }
+                    }
+                }
+
+                foreach ($grouped as $key => $value) {
+                    array_push($groupArrayWithoutNumberedIndex, $value);
+                }
+
+                if (!empty($groupArrayWithoutNumberedIndex)) {
+
+                    // In this function we want to find the key that has guest_id_image_upload_form_file_ in
+                    foreach ($groupArrayWithoutNumberedIndex as $key => $value) {
+
+                        foreach ($value as $guestkey => $guestvalue) {
+                            if (strpos($guestkey, 'guest_id_image_upload_form_file') === 0) {
+                                if ($request->hasFile($guestkey)) {
+                                    $file_1 = $request->file($guestkey);
+                                    $extension_1 = $file_1->getClientOriginalExtension();
+                                    // when naming the image wecan have a count or index to add the guest 
+                                    $filename_1 = $request->guest_booking_ref . '-additional-guestid-test.' . $extension_1;
+
+                                    // Upload to FTP/SFTP
+                                    $disk_1 = Storage::disk('ftp'); // or 'sftp'
+                                    $disk_1->putFileAs('images', $file_1, $filename_1);
+
+                                    $otherIdImagePath_1 = 'images/' . $filename_1;
+                                    $groupArrayWithoutNumberedIndex[$key]['other_image_path'] = env('FTP_ROOT_PATH') . '/' . $otherIdImagePath_1;
+                                }
+                            }
+
+                            if (strpos($guestkey, 'guest_vehicle_registration_image_upload_form_file') === 0) {
+                                if ($request->hasFile($guestkey)) {
+                                    $file_2 = $request->file($guestkey);
+                                    $extension_2 = $file_2->getClientOriginalExtension();
+                                    $filename_2 = $request->guest_booking_ref . '-additional-guest-vehicle-reg-test.' . $extension_2;
+
+                                    // Upload to FTP/SFTP
+                                    $disk_2 = Storage::disk('ftp'); // or 'sftp'
+                                    $disk_2->putFileAs('images', $file_2, $filename_2);
+
+                                    $otherVehicleImagePath_2 = 'images/' . $filename_2;
+                                    $groupArrayWithoutNumberedIndex[$key]['other_vehicle_image_path'] = env('FTP_ROOT_PATH') . '/' . $otherVehicleImagePath_2;
+                                }
+                            }
+
+                            if (strpos($guestkey, 'guest_selfie_image_upload_form_file') === 0) {
+                                if ($request->hasFile($guestkey)) {
+                                    $file_3 = $request->file($guestkey);
+                                    $extension_3 = $file_3->getClientOriginalExtension();
+                                    $filename_3 = $request->guest_booking_ref . '-additional-guest-selfie-test.' . $extension_3;
+
+                                    // Upload to FTP/SFTP
+                                    $disk_3 = Storage::disk('ftp'); // or 'sftp'
+                                    $disk_3->putFileAs('images', $file_3, $filename_3);
+
+                                    $otherVehicleImagePath_3 = 'images/' . $filename_3;
+                                    $groupArrayWithoutNumberedIndex[$key]['other_selfie_image_path'] = env('FTP_ROOT_PATH') . '/' . $otherVehicleImagePath_3;
+                                }
+                            }
+                        };
+                    }
+
+                    $updateData['other_guests_data'] = json_encode($groupArrayWithoutNumberedIndex);
+                }
+
+                $keys = array_keys($updateData);
+
+                $fieldsUpdated = implode(', ', $keys);
+
+                Log::debug('--updateData--');
+                Log::debug($updateData);
+                Log::debug('--updateData--');
+                Log::debug('--collect_status--');
+                Log::debug($request->collect_guest_details_completed_status);
+                Log::debug('--collect_status--');
+
+                if ($request->collect_guest_details_completed_status == 'on' && count($getOldGuestInfo) > 0) {
+                    Log::debug("Update Guest Details: ");
+                    // Update Guest Details
+
+                    $updateRecord = DB::table('virtualdesigns_erpbookings_guestinfo')
+                        ->where('booking_id', '=', $request->guest_booking_id)
+                        ->update($updateData);
+
+                    if ($updateRecord) {
+                        DB::table('virtualdesigns_erpbookings_guestinfo')
+                            ->where('booking_id', '=', $request->guest_booking_id)
+                            ->update(['updated_at' => date('Y-m-d H:i:s')]);
+
+                        DB::table('virtualdesigns_changes_changes')
+                            ->insert([
+                                'user_id' => 1,
+                                'user_name' => "Ryno Fourie",
+                                'db_table' => 'virtualdesigns_erpbookings_guestinfo',
+                                'record_id' => $request->guest_booking_id,
+                                'field' => $fieldsUpdated,
+                                'change_date' => date("Y-m-d H:i:s"),
+                                'old' => json_encode([
+                                    "guest_name" => $getOldGuestInfo[0]->guest_name,
+                                    "guest_id_no" => $getOldGuestInfo[0]->guest_id_no,
+                                    "guest_contact" => $getOldGuestInfo[0]->guest_contact,
+                                    "guest_id" => $getOldGuestInfo[0]->guest_id,
+                                    "guest_no" => $getOldGuestInfo[0]->guest_no,
+                                    "vehicle_reg" => $getOldGuestInfo[0]->vehicle_reg,
+                                    "completed" => $getOldGuestInfo[0]->completed,
+                                    "booking_id" => $getOldGuestInfo[0]->booking_id,
+                                    "guest_alternative_email_address" => $getOldGuestInfo[0]->guest_alternative_email_address,
+                                    "other_guests_data" => $getOldGuestInfo[0]->other_guests_data,
+                                    "mail_sent_to_body_corp" => $getOldGuestInfo[0]->mail_sent_to_body_corp,
+                                    "selfie_image_path" => $getOldGuestInfo[0]->selfie_image_path,
+                                    "available_vehicle_status" => $getOldGuestInfo[0]->available_vehicle_status,
+                                ]),
+                                'new' => json_encode([$updateData])
+                            ]);
+
+                        return redirect()->back()->with('message_sent', 'Guest Details Update Successfully');
+                        return $this->corsJson(["message" => 'Guest Details Update Successfully'], 201);
+                    } else {
+                        return $this->corsJson(["message" => 'Details already filled in'], 409);
+                    }
+                } elseif ($request->collect_guest_details_completed_status == 'on' && count($getOldGuestInfo) === 0 && count($updateData) > 0) {
+                    Log::debug("Insert Guest Details: ");
+                    // Insert Guest Details
+                    $insertGuestInfo = DB::table('virtualdesigns_erpbookings_guestinfo')
+                        ->insert($updateData);
+
+                    $insertChanges = DB::table('virtualdesigns_changes_changes')
+                        ->insert([
+                            'user_id' => 1,
+                            'user_name' => "Ryno Fourie",
+                            'db_table' => 'virtualdesigns_erpbookings_guestinfo',
+                            'record_id' => $request->guest_booking_id,
+                            'field' => $fieldsUpdated,
+                            'change_date' => date("Y-m-d H:i:s"),
+                            'old' => null,
+                            'new' => json_encode([$updateData])
+                        ]);
+                    Log::debug("Insert");
+                    Log::debug($insertGuestInfo);
+                    Log::debug($insertChanges);
+                    Log::debug("Insert");
+                    return $this->corsJson(["message" => 'Guest Details Successfully Completed'], 201);
+                } else {
+                    // return $this->corsJson(["message" => 'Guest Details Successfully Completed'], 200);
+                    Log::error('Failed to Complete Guest Details');
+                    return $this->corsJson(["message" => 'Failed to Complete Guest Details'], 422);
+                    // return redirect()->back()->with('message_sent', 'Failed to Complete Guest Details');
+                }
+            }
 
             // return $this->corsJson(["message" => $insertBodyCorp], 200);
         } catch (\Throwable $e) {
