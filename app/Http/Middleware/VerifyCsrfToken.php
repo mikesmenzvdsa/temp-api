@@ -13,8 +13,5 @@ class VerifyCsrfToken extends Middleware
      */
     protected $except = [
         'broadcasting/auth',
-        'login',
-        'logout',
-        'me',  // Allow /me to bypass CSRF for token-based auth
     ];
 }
