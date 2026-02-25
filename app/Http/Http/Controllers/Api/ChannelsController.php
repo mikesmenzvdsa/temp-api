@@ -15,7 +15,7 @@ class ChannelsController extends Controller
 
         return $this->corsJson($records, 200);
     }
- 
+
     public function show(Request $request, $id)
     {
         $this->assertApiKey($request);
