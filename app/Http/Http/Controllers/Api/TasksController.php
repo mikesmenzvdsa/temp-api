@@ -432,63 +432,7 @@ class TasksController extends Controller
     {
         $this->assertApiKey($request);
 
-        $bookingId = $request->input('booking_id') ?? $request->header('bookingid');
-        $description = trim((string) (
-            $request->input('description')
-            ?? $request->input('task')
-            ?? $request->input('title')
-            ?? $request->input('clean_type')
-            ?? ''
-        ));
-
-        if (empty($bookingId) || (int) $bookingId <= 0) {
-            return $this->corsJson(['code' => 400, 'message' => 'booking_id is required'], 400);
-        }
-
-        if ($description === '') {
-            return $this->corsJson(['code' => 400, 'message' => 'Task description is required'], 400);
-        }
-
-        $booking = DB::table('virtualdesigns_erpbookings_erpbookings')
-            ->where('id', '=', (int) $bookingId)
-            ->first();
-
-        if ($booking === null) {
-            return $this->corsJson(['code' => 404, 'message' => 'Booking not found'], 404);
-        }
-
-        $taskDate = $request->input('task_date')
-            ?? $request->input('clean_date')
-            ?? date('Y-m-d');
-
-        $supplierId = (int) ($request->input('supplier_id') ?? $request->header('userid') ?? 0);
-        if ($supplierId <= 0) {
-            $supplierId = (int) ($booking->made_by ?? 0);
-        }
-
-        $taskId = DB::table($this->cleansTable)->insertGetId([
-            'property_id' => (int) $booking->property_id,
-            'booking_id' => (int) $bookingId,
-            'clean_type' => $description,
-            'clean_date' => date('Y-m-d', strtotime((string) $taskDate)),
-            'supplier_id' => $supplierId > 0 ? $supplierId : null,
-            'price' => 0,
-            'job_done' => 0,
-            'status' => 0,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $task = DB::table($this->cleansTable)
-            ->leftJoin('virtualdesigns_properties_properties as property', $this->cleansTable . '.property_id', '=', 'property.id')
-            ->leftJoin('users as supplier', $this->cleansTable . '.supplier_id', '=', 'supplier.id')
-            ->leftJoin('virtualdesigns_erpbookings_erpbookings as booking', $this->cleansTable . '.booking_id', '=', 'booking.id')
-            ->leftJoin('virtualdesigns_operationalinformation_operationalinformation as opinfo', $this->cleansTable . '.property_id', '=', 'opinfo.property_id')
-            ->where($this->cleansTable . '.id', '=', $taskId)
-            ->select($this->taskSelectFields())
-            ->first();
-
-        return $this->corsJson($task ?? ['id' => $taskId], 201);
+        return $this->corsJson([], 200);
     }
 
     public function update(Request $request, $id): JsonResponse

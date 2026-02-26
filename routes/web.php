@@ -22,7 +22,7 @@ Route::get('/login', [LoginController::class, 'show'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
-Route::get('/me', [LoginController::class, 'me'])->middleware('auth');
+Route::get('/me', [LoginController::class, 'me'])->middleware(['auth:sanctum,web']);
 Route::group(['prefix' => 'properties'], function () {
 
     $controller = 'VirtualDesigns\HostAgentsApi\Controllers\PropertiesController';

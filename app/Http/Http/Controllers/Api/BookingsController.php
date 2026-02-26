@@ -7,7 +7,6 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class BookingsController extends Controller
@@ -19,7 +18,7 @@ class BookingsController extends Controller
 
     private function getPriceListsTableName(): string
     {
-        return 'pmsbackhostagent_rahosktnfe_db1.price_lists';
+        return 'rahosktnfe_db1.price_lists';
     }
 
     public function show(Request $request, $id)
@@ -444,608 +443,8 @@ class BookingsController extends Controller
     }
 
     public function update(Request $request, $id)
-
     {
-
-        try {
-
-            //Creates header array and populate with header values
-            $headers = array();
-            foreach (getallheaders() as $name => $value) {
-                $headers[strtolower($name)] = $value;
-            }
-
-            $apikey = $headers['key'];
-
-            //Check that correct API key was used
-            if (md5("aiden@virtualdesigns.co.za3d@=kWfmMR") == $apikey) {
-                try {
-                    //Load booking record basd on ID in request
-                    $bid = request('id');
-                    $booking_rec = ErpBookings::find($bid);
-                    $prop_rec = Property::find($booking_rec->property_id);
-                    $channel_rec = Db::table('virtualdesigns_channels_providers')->where('name', '=', request('channel'))->first();
-                    //Check if booking was found and update with values from request
-
-                    if ($booking_rec != null) {
-                        // if($booking_rec->quote_confirmed != 1){
-                        if (request('salesperson_id') != null && request('salesperson_id') != "" && $booking_rec->made_by == null) {
-                            $sales_person = User::find(request('salesperson_id'));
-                            if ($sales_person != null) {
-                                $sales_person_short = strtoupper($sales_person->name[0] . $sales_person->surname[0]);
-                            } else {
-                                $sales_person_short = null;
-                            }
-                            //Set var with internal ref prefix using sales person record
-                            if ($sales_person != null) {
-                                $internal_ref = $sales_person_short . $booking_rec->booking_ref;
-                            } else {
-                                if($booking_rec->booking_ref != null){
-                                    $internal_ref = $booking_rec->booking_ref;
-                                }else{
-                                    $internal_ref = $booking_rec->id;
-                                }
-                            }
-                        } else {
-                            if ($booking_rec->made_by != null) {
-                                $sales_person = User::find($booking_rec->made_by);
-                                if ($sales_person != null) {
-                                    $sales_person_short = strtoupper($sales_person->name[0] . $sales_person->surname[0]);
-                                } else {
-                                    $sales_person_short = null;
-                                }
-                                //     //Set var with internal ref prefix using sales person record
-                                //     // if($sales_person != null){
-                                //     //     $internal_ref = $sales_person_short.$booking_rec->booking_ref;
-                                //     // }else{
-                                //         $internal_ref = $booking_rec->booking_ref;
-                                //     // }
-                                // }else{
-                                $ref_initials = substr($booking_rec->booking_ref, 0, 2);
-                                if (is_numeric($ref_initials)) {
-                                    if($booking_rec->booking_ref != null){
-                                        $internal_ref = $sales_person_short . $booking_rec->booking_ref;
-                                    }else{
-                                        $internal_ref = $sales_person_short . $booking_rec->id;
-                                    }
-                                    
-                                } else {
-                                    if($booking_rec->booking_ref != null){
-                                        $internal_ref = $booking_rec->booking_ref;
-                                    }else{
-                                        $internal_ref = $booking_rec->id;
-                                    }
-                                }
-                            } else {
-                                if($booking_rec->booking_ref != null){
-                                    $internal_ref = $booking_rec->booking_ref;
-                                }else{
-                                    $internal_ref = $booking_rec->id;
-                                }
-                            }
-                        }
-
-                        if ($channel_rec != null && ($booking_rec->channel == null || $booking_rec->channel == '')) {
-                            // if($prop_rec->pricelabs_id != null){
-                            //     if($booking_rec->rentalsunited_ref != null){
-                            //         $internal_ref = $booking_rec->booking_ref.$channel_rec->short_name;
-                            //     }else{
-                            //         $internal_ref = $booking_rec->booking_ref->nightsbridge_ref.$channel_rec->short_name;
-                            //     }
-                            // }else{
-                            if(isset($internal_ref)){
-                                $internal_ref = $internal_ref . $channel_rec->short_name;
-                            }else{
-                                if($booking_rec->booking_ref != null){
-                                    $internal_ref = $booking_rec->booking_ref . $channel_rec->short_name;
-                                }else{
-                                    $internal_ref = $booking_rec->id . $channel_rec->short_name;
-                                }
-                            }
-                            
-                            // }
-                        }
-                        // }else{
-                        //     $internal_ref =  $booking_rec->booking_ref;
-                        // }
-                        if ($booking_rec->booking_notes != request('booking_notes')) {
-                            Db::table('virtualdesigns_changes_changes')->insert([
-                                'user_id' => request('change_user'),
-                                'db_table' => 'virtualdesigns_erpbookings_erpbookings',
-                                'record_id' => $booking_rec->id,
-                                'field' => 'booking_notes',
-                                'old' => $booking_rec->booking_notes,
-                                'new' => request('booking_notes'),
-                                'change_date' => date('Y-m-d H:i:s')
-                            ]);
-                        }
-                        $booking_rec->property_id = request('property_id');
-                        $booking_rec->date_confirmed = request('date_confirmed');
-                        $booking_rec->arrival_date = request('arrival_date');
-                        $booking_rec->departure_date = request('departure_date');
-                        if(isset($internal_ref)){
-                            $booking_rec->booking_ref = $internal_ref;
-                        }else{
-                            if($booking_rec->booking_ref == null){
-                                $booking_rec->booking_ref = $booking_rec->id;
-                            }
-                        }
-                        $booking_rec->client_name = request('client_name');
-                        $booking_rec->client_phone = request('client_phone');
-                        $booking_rec->client_mobile = request('client_mobile');
-                        $booking_rec->client_email = request('client_email');
-                        $booking_rec->status = request('status');
-                        $booking_rec->booking_id = request('booking_id');
-                        $booking_rec->so_type = request('so_type');
-                        $booking_rec->pay_on_arrival = request('pay_on_arrival');
-                        if ($booking_rec->bd_active != request('bd_active')) {
-                            Db::table('virtualdesigns_changes_changes')->insert([
-                                'user_id' => request('change_user'),
-                                'db_table' => 'virtualdesigns_erpbookings_erpbookings',
-                                'record_id' => $booking_rec->id,
-                                'field' => 'bd_active',
-                                'old' => $booking_rec->bd_active,
-                                'new' => request('bd_active'),
-                                'change_date' => date('Y-m-d H:i:s')
-                            ]);
-                        }
-                        $booking_rec->bd_active = request('bd_active');
-                        if ($booking_rec->virtual_card != request('virtual_card')) {
-                            Db::table('virtualdesigns_changes_changes')->insert([
-                                'user_id' => request('change_user'),
-                                'db_table' => 'virtualdesigns_erpbookings_erpbookings',
-                                'record_id' => $booking_rec->id,
-                                'field' => 'virtual_card',
-                                'old' => $booking_rec->virtual_card,
-                                'new' => request('virtual_card'),
-                                'change_date' => date('Y-m-d H:i:s')
-                            ]);
-                        }
-                        $booking_rec->virtual_card = request('virtual_card');
-                        if ($booking_rec->non_refundable != request('non_refundable')) {
-                            Db::table('virtualdesigns_changes_changes')->insert([
-                                'user_id' => request('change_user'),
-                                'db_table' => 'virtualdesigns_erpbookings_erpbookings',
-                                'record_id' => $booking_rec->id,
-                                'field' => 'non_refundable',
-                                'old' => $booking_rec->non_refundable,
-                                'new' => request('non_refundable'),
-                                'change_date' => date('Y-m-d H:i:s')
-                            ]);
-                        }
-                        $booking_rec->non_refundable = request('non_refundable');
-                        if ($booking_rec->vc_date != request('vc_date')) {
-                            Db::table('virtualdesigns_changes_changes')->insert([
-                                'user_id' => request('change_user'),
-                                'db_table' => 'virtualdesigns_erpbookings_erpbookings',
-                                'record_id' => $booking_rec->id,
-                                'field' => 'vc_date',
-                                'old' => $booking_rec->vc_date,
-                                'new' => request('vc_date'),
-                                'change_date' => date('Y-m-d H:i:s')
-                            ]);
-                        }
-                        $booking_rec->vc_date = request('vc_date');
-                        if ($booking_rec->processed != request('processed')) {
-                            Db::table('virtualdesigns_changes_changes')->insert([
-                                'user_id' => request('change_user'),
-                                'db_table' => 'virtualdesigns_erpbookings_erpbookings',
-                                'record_id' => $booking_rec->id,
-                                'field' => 'processed',
-                                'old' => $booking_rec->processed,
-                                'new' => request('processed'),
-                                'change_date' => date('Y-m-d H:i:s')
-                            ]);
-                        }
-                        $booking_rec->processed = request('processed');
-                        $booking_rec->is_eft = request('is_eft');
-                        $booking_rec->is_credit = request('is_credit');
-                        $booking_rec->is_forex = request('is_forex');
-                        $booking_rec->no_review = request('no_review');
-                        $booking_rec->booking_notes = request('booking_notes');
-                        $booking_rec->suburb = request('suburb');
-                        $booking_rec->no_linen = request('no_linen');
-                        $booking_rec->website_from = request('website_from');
-
-                        if (request('channel') != null && request('channel') != "") {
-                            $booking_rec->channel = request('channel');
-                            if ($booking_rec->channel != request('channel')) {
-                                Db::table('virtualdesigns_changes_changes')->insert([
-                                    'user_id' => request('change_user'),
-                                    'db_table' => 'virtualdesigns_erpbookings_erpbookings',
-                                    'record_id' => $booking_rec->id,
-                                    'field' => 'channel',
-                                    'old' => $booking_rec->channel,
-                                    'new' => request('channel'),
-                                    'change_date' => date('Y-m-d H:i:s')
-                                ]);
-                            }
-                        }
-
-                        if ($channel_rec != null) {
-                            if ($channel_rec->name == "Host Agents") {
-                                $booking_rec->total_com = $prop_rec->direct_comm + $channel_rec->percentage;
-                                $booking_rec->bhr_com = $prop_rec->direct_comm;
-                                $booking_rec->third_party_com = $channel_rec->percentage;
-                            } else {
-                                if ($channel_rec->name == "Owner") {
-                                    $booking_rec->total_com = 0.00;
-                                    $booking_rec->bhr_com = 0.00;
-                                    $booking_rec->third_party_com = 0.00;
-                                } else {
-                                    $booking_rec->total_com = $prop_rec->comm_percent + $channel_rec->percentage;
-                                    $booking_rec->bhr_com = $prop_rec->comm_percent;
-                                    if($prop_rec->country_id == 854){
-                                        if($channel_rec->name == "Booking.com"){
-                                            $channel =  DB::table('virtualdesigns_channels_providers')->where('name', '=', "Booking.com Dubai")->first();
-                                        }
-                                        if($channel_rec->name == "Airbnb"){
-                                            $channel =  DB::table('virtualdesigns_channels_providers')->where('name', '=', "Airbnb Dubai")->first();
-                                        }
-                                        if($channel_rec->name == "Expedia///Hotels.com///Travelo"){
-                                            $channel =  DB::table('virtualdesigns_channels_providers')->where('name', '=', "Expedia Dubai")->first();
-                                        }
-                                        $booking_rec->third_party_com = $channel->percentage;
-                                    }else{
-                                        $booking_rec->third_party_com = $channel_rec->percentage;
-                                    }
-                                }
-                            }
-                        } else {
-                            $booking_rec->total_com = request('total_com');
-                            $booking_rec->bhr_com = request('bhr_com');
-                            $booking_rec->third_party_com = request('third_party_com');
-                        }
-
-                        if ($booking_rec->payment_notes != request('payment_notes')) {
-                            Db::table('virtualdesigns_changes_changes')->insert([
-                                'user_id' => request('change_user'),
-                                'db_table' => 'virtualdesigns_erpbookings_erpbookings',
-                                'record_id' => $booking_rec->id,
-                                'field' => 'payment_notes',
-                                'old' => $booking_rec->payment_notes,
-                                'new' => request('payment_notes'),
-                                'change_date' => date('Y-m-d H:i:s')
-                            ]);
-                        }
-                        $booking_rec->payment_notes = request('payment_notes');
-                        $booking_rec->no_pack = request('no_pack');
-                        $booking_rec->hours = request('hours');
-
-                        if ($booking_rec->booking_amount != request('booking_amount') && $booking_rec->quote_confirmed == 1) {
-                            $amount_updated = true;
-                        } else {
-                            $amount_updated = false;
-                        }
-
-                        $booking_rec->booking_amount = request('booking_amount');
-                        $booking_rec->room_name = request('room_name');
-                        $booking_rec->so_number = request('so_number');
-                        $booking_rec->no_guests = request('no_guests');
-                        $booking_rec->guest_id_no = request('guest_id_no');
-                        $booking_rec->arrival_time = request('arrival_time');
-                        $booking_rec->departure_time = request('departure_time');
-                        $booking_rec->issue_id = request('issue_id');
-
-                        if (request('salesperson_id') != null && request('salesperson_id') != "") {
-                            $booking_rec->made_by = request('salesperson_id');
-                            if ($booking_rec->made_by != request('salesperson_id')) {
-                                Db::table('virtualdesigns_changes_changes')->insert([
-                                    'user_id' => request('change_user'),
-                                    'db_table' => 'virtualdesigns_erpbookings_erpbookings',
-                                    'record_id' => $booking_rec->id,
-                                    'field' => 'made_by',
-                                    'old' => $booking_rec->made_by,
-                                    'new' => request('salesperson_id'),
-                                    'change_date' => date('Y-m-d H:i:s')
-                                ]);
-                            }
-                        }
-
-                        $booking_rec->second_guest_name = request('second_guest_name');
-                        $booking_rec->second_guest_phone = request('second_guest_phone');
-                        $booking_rec->adults = request('adults');
-                        $booking_rec->children = request('children');
-                        $booking_rec->save();
-
-                        //Logic for updating tasks/laundry
-                        if (null !== request('tasks')) {
-                            $tasks_array = request('tasks');
-                            foreach ($tasks_array as $task) {
-                                $db_task = Cleans::find($task['task_id']);
-                                $date_array = explode('-', $task['task_date']);
-                                $date_array[1] = sprintf("%02s", $date_array[1]);
-                                $date_array[2] = sprintf("%02s", $date_array[2]);
-                                $task['task_date'] = implode('-', $date_array);
-                                if ($db_task->clean_date != $task['task_date']) {
-                                    Db::table('virtualdesigns_changes_changes')->insert([
-                                        'user_id' => request('change_user'),
-                                        'db_table' => 'virtualdesigns_cleans_cleans',
-                                        'record_id' => $db_task->id,
-                                        'field' => 'clean_date',
-                                        'old' => $db_task->clean_date,
-                                        'new' => $task['task_date'],
-                                        'change_date' => date('Y-m-d H:i:s')
-                                    ]);
-                                }
-                                if ($db_task->status != $task['status']) {
-                                    Db::table('virtualdesigns_changes_changes')->insert([
-                                        'user_id' => request('change_user'),
-                                        'db_table' => 'virtualdesigns_cleans_cleans',
-                                        'record_id' => $db_task->id,
-                                        'field' => 'status',
-                                        'old' => $db_task->status,
-                                        'new' => $task['status'],
-                                        'change_date' => date('Y-m-d H:i:s')
-                                    ]);
-                                }
-                                if ($db_task->job_done != $task['job_done']) {
-                                    Db::table('virtualdesigns_changes_changes')->insert([
-                                        'user_id' => request('change_user'),
-                                        'db_table' => 'virtualdesigns_cleans_cleans',
-                                        'record_id' => $db_task->id,
-                                        'field' => 'job_done',
-                                        'old' => $db_task->job_done,
-                                        'new' => $task['job_done'],
-                                        'change_date' => date('Y-m-d H:i:s')
-                                    ]);
-                                }
-                                $db_task->clean_date = $task['task_date'];
-                                $db_task->status = $task['status'];
-                                $db_task->job_done = $task['job_done'];
-                                // $db_task->supplier_id = $task['supplier_id'];
-                                $db_task->save();
-                            }
-                        }
-
-                        if (null !== request('laundry')) {
-                            $laundry_array = request('laundry');
-                            foreach ($laundry_array as $laundry) {
-                                $db_laundry = Laundry::find($laundry['id']);
-                                $date_array = explode('-', $laundry['action_date']);
-                                $date_array[1] = sprintf("%02s", $date_array[1]);
-                                $date_array[2] = sprintf("%02s", $date_array[2]);
-                                $laundry['action_date'] = implode('-', $date_array);
-                                if ($db_laundry->action_date != $laundry['action_date']) {
-                                    Db::table('virtualdesigns_changes_changes')->insert([
-                                        'user_id' => request('change_user'),
-                                        'db_table' => 'virtualdesigns_laundry_laundry',
-                                        'record_id' => $db_laundry->id,
-                                        'field' => 'action_date',
-                                        'old' => $db_laundry->action_date,
-                                        'new' => $laundry['action_date'],
-                                        'change_date' => date('Y-m-d H:i:s')
-                                    ]);
-                                }
-                                if ($db_laundry->status != $laundry['status']) {
-                                    Db::table('virtualdesigns_changes_changes')->insert([
-                                        'user_id' => request('change_user'),
-                                        'db_table' => 'virtualdesigns_laundry_laundry',
-                                        'record_id' => $db_laundry->id,
-                                        'field' => 'status',
-                                        'old' => $db_laundry->status,
-                                        'new' => $laundry['status'],
-                                        'change_date' => date('Y-m-d H:i:s')
-                                    ]);
-                                }
-                                if ($db_laundry->stage != $laundry['stage']) {
-                                    Db::table('virtualdesigns_changes_changes')->insert([
-                                        'user_id' => request('change_user'),
-                                        'db_table' => 'virtualdesigns_laundry_laundry',
-                                        'record_id' => $db_laundry->id,
-                                        'field' => 'stage',
-                                        'old' => $db_laundry->stage,
-                                        'new' => $laundry['stage'],
-                                        'change_date' => date('Y-m-d H:i:s')
-                                    ]);
-                                }
-                                $db_laundry->action_date = $laundry['action_date'];
-                                $db_laundry->status = $laundry['status'];
-                                $db_laundry->stage = $laundry['stage'];
-                                // $db_laundry->supplier_id = $laundry['supplier_id'];
-                                $db_laundry->save();
-                            }
-                        }
-
-                        if (null !== request('fees')) {
-                            $fees_array = request('fees');
-                            $price = 0;
-                            foreach ($fees_array as $fee) {
-                                if (isset($fee['description'])) {
-                                    if ($fee['description'] == "Breakage Deposit") {
-                                        $damage = Db::table('virtualdesigns_erpbookings_damage')->where('id', '=', $fee['id'])->update([
-                                            'amount' => $fee['amount'],
-                                            'paid_credit' => $fee['paid_credit'],
-                                            'paid_eft' => $fee['paid_eft']
-                                        ]);
-                                    } else {
-                                        $price = $price + ($fee['amount'] * $fee['quantity']);
-                                        $fee_rec = Db::table('virtualdesigns_erpbookings_fees')->where('id', '=', $fee['id'])->first();
-                                        $currency_array = DB::connection('remote')->table('price_lists')->where('pl_id', '=', $prop_rec->pricelabs_id)->select('currency')->first();
-                                        $currency = $currency_array->currency;
-                                        $line_mur = $fee['amount'];
-                                        //Add AED support here
-                                        if ($currency == "EUR") {
-                                            $conversion_mur_rate = Db::table('virtualdesigns_exchange_rates')->where('symbol', '=', "EUR/MUR")->value('rate');
-                                            $line_mur = $fee['amount'] * $conversion_mur_rate;
-                                        }
-                                        if ($currency == "USD") {
-                                            $conversion_mur_rate = Db::table('virtualdesigns_exchange_rates')->where('symbol', '=', "USD/MUR")->value('rate');
-                                            $line_mur = $fee['amount'] * $conversion_mur_rate;
-                                        }
-                                        if ($currency == "ZAR") {
-                                            $conversion_usd_rate = Db::table('virtualdesigns_exchange_rates')->where('symbol', '=', "ZAR/USD")->value('rate');
-                                            $conversion_mur_rate = Db::table('virtualdesigns_exchange_rates')->where('symbol', '=', "USD/MUR")->value('rate');
-                                            $total_dollars = $fee['amount'] * $conversion_usd_rate;
-                                            $line_mur = $total_dollars * $conversion_mur_rate;
-                                        }
-                                        $db_fee = Db::table('virtualdesigns_erpbookings_fees')->where('id', '=', $fee['id'])->first();
-                                        if ($db_fee->unit_price != $fee['amount']) {
-                                            Db::table('virtualdesigns_changes_changes')->insert([
-                                                'user_id' => request('change_user'),
-                                                'db_table' => 'virtualdesigns_erpbookings_fees',
-                                                'record_id' => $fee['id'],
-                                                'field' => 'unit_price',
-                                                'old' => $db_fee->unit_price,
-                                                'new' => $fee['amount'],
-                                                'change_date' => date('Y-m-d H:i:s')
-                                            ]);
-                                            if ($db_fee->mur_unit_price != $line_mur) {
-                                                Db::table('virtualdesigns_changes_changes')->insert([
-                                                    'user_id' => request('change_user'),
-                                                    'db_table' => 'virtualdesigns_erpbookings_fees',
-                                                    'record_id' => $fee['id'],
-                                                    'field' => 'mur_unit_price',
-                                                    'old' => $db_fee->mur_unit_price,
-                                                    'new' => $line_mur,
-                                                    'change_date' => date('Y-m-d H:i:s')
-                                                ]);
-                                            }
-                                        }
-                                        if ($db_fee->price != $fee['amount'] * $fee['quantity']) {
-                                            Db::table('virtualdesigns_changes_changes')->insert([
-                                                'user_id' => request('change_user'),
-                                                'db_table' => 'virtualdesigns_erpbookings_fees',
-                                                'record_id' => $fee['id'],
-                                                'field' => 'price',
-                                                'old' => $db_fee->price,
-                                                'new' => $fee['amount'] * $fee['quantity'],
-                                                'change_date' => date('Y-m-d H:i:s')
-                                            ]);
-                                            if ($db_fee->mur_price != $line_mur * $fee['quantity']) {
-                                                Db::table('virtualdesigns_changes_changes')->insert([
-                                                    'user_id' => request('change_user'),
-                                                    'db_table' => 'virtualdesigns_erpbookings_fees',
-                                                    'record_id' => $fee['id'],
-                                                    'field' => 'mur_price',
-                                                    'old' => $db_fee->mur_price,
-                                                    'new' => $line_mur * $fee['quantity'],
-                                                    'change_date' => date('Y-m-d H:i:s')
-                                                ]);
-                                            }
-                                        }
-                                        if ($db_fee->arrival_date != request('arrival_date')) {
-                                            Db::table('virtualdesigns_changes_changes')->insert([
-                                                'user_id' => request('change_user'),
-                                                'db_table' => 'virtualdesigns_erpbookings_fees',
-                                                'record_id' => $fee['id'],
-                                                'field' => 'arrival_date',
-                                                'old' => $db_fee->arrival_date,
-                                                'new' => request('arrival_date'),
-                                                'change_date' => date('Y-m-d H:i:s')
-                                            ]);
-                                        }
-                                        if ($db_fee->departure_date != request('departure_date')) {
-                                            Db::table('virtualdesigns_changes_changes')->insert([
-                                                'user_id' => request('change_user'),
-                                                'db_table' => 'virtualdesigns_erpbookings_fees',
-                                                'record_id' => $fee['id'],
-                                                'field' => 'departure_date',
-                                                'old' => $db_fee->departure_date,
-                                                'new' => request('departure_date'),
-                                                'change_date' => date('Y-m-d H:i:s')
-                                            ]);
-                                        }
-                                        if ($db_fee->quantity != request('quantity')) {
-                                            Db::table('virtualdesigns_changes_changes')->insert([
-                                                'user_id' => request('change_user'),
-                                                'db_table' => 'virtualdesigns_erpbookings_fees',
-                                                'record_id' => $fee['id'],
-                                                'field' => 'quantity',
-                                                'old' => $db_fee->quantity,
-                                                'new' => request('quantity'),
-                                                'change_date' => date('Y-m-d H:i:s')
-                                            ]);
-                                        }
-                                        if ($db_fee->description != request('description')) {
-                                            Db::table('virtualdesigns_changes_changes')->insert([
-                                                'user_id' => request('change_user'),
-                                                'db_table' => 'virtualdesigns_erpbookings_fees',
-                                                'record_id' => $fee['id'],
-                                                'field' => 'description',
-                                                'old' => $db_fee->description,
-                                                'new' => request('description'),
-                                                'change_date' => date('Y-m-d H:i:s')
-                                            ]);
-                                        }
-                                        Db::table('virtualdesigns_erpbookings_fees')->where('id', '=', $fee['id'])->update([
-                                            'description' => $fee['description'],
-                                            'arrival_date' => request('arrival_date'),
-                                            'departure_date' => request('departure_date'),
-                                            'unit_price' => $fee['amount'],
-                                            'price' => $fee['amount'] * $fee['quantity'],
-                                            'mur_unit_price' => $line_mur,
-                                            'mur_price' => $line_mur * $fee['quantity'],
-                                            'quantity' => $fee['quantity']
-                                        ]);
-                                    }
-                                }
-                            }
-                            $booking_rec->booking_amount = $price;
-                            $booking_rec->updated_at = date('Y-m-d H:i:s');
-                            $booking_rec->save();
-                        }
-
-                        if (null != request('guest_details')) {
-                            $this->UpdateGuestDetails(request('guest_details'));
-                        }
-
-                        //Queary booking data required for return
-                        $booking_rec = ErpBookings::join('virtualdesigns_properties_properties', 'virtualdesigns_erpbookings_erpbookings.property_id', '=', 'virtualdesigns_properties_properties.id')
-                            ->join('users', 'virtualdesigns_properties_properties.user_id', '=', 'users.id')
-                            ->where('virtualdesigns_erpbookings_erpbookings.id', '=', $bid)
-                            ->select('virtualdesigns_erpbookings_erpbookings.*', 'virtualdesigns_properties_properties.name as prop_name', 'virtualdesigns_properties_properties.country_id as country_id', 'users.name as manager_name', 'users.surname as manager_surname', 'users.email as manager_email')->first();
-
-                        //Add ERP update code here
-                        if ($amount_updated == true) {
-                            $vars = array(
-                                "prop_name" => $prop_rec->name,
-                                "bookingref" => $booking_rec->booking_ref
-                            );
-
-                            // Mail::send('virtualdesigns.hostagentsapi::mail.message_update', (array)$vars, function($message) use ($vars) {
-                            //     $message->to('accounts@hostagents.co.za', 'Host Agents');
-                            //     $message->bcc('aiden@virtualdesigns.co.za', 'Aiden');
-                            //     $message->subject($vars['prop_name'] . ' - Booking line items updated by sales');
-                            // });
-
-                        }
-
-                        return response($booking_rec, 200)
-                            ->header('Content-Type', 'application.json')
-                            ->header('Access-Control-Allow-Origin', '*');
-                    } else {
-                        $error_array = array(
-                            "code" => 404,
-                            "message" => "Booking not found"
-
-                        );
-
-                        return response(json_encode($error_array), 404)
-                            ->header('Content-Type', 'application.json')
-                            ->header('Access-Control-Allow-Origin', '*');
-                    }
-                } catch (Exception $e) {
-                    return response($e, 500)
-                        ->header('Content-Type', 'application.json')
-                        ->header('Access-Control-Allow-Origin', '*');
-                }
-            } else {
-                $error_array = array(
-                    "code" => 401,
-                    "message" => "Wrong API Key"
-
-                );
-
-                return response(json_encode($error_array), 401)
-                    ->header('Content-Type', 'application.json')
-                    ->header('Access-Control-Allow-Origin', '*');
-            }
-        } catch (Exception $e) {
-            return response($e, 500)
-                ->header('Content-Type', 'application.json')
-                ->header('Access-Control-Allow-Origin', '*');
-        }
+        return $this->notImplemented();
     }
 
     public function destroy($id)
@@ -2009,7 +1408,6 @@ class BookingsController extends Controller
 
             $bookingId = DB::table('virtualdesigns_erpbookings_erpbookings')->insertGetId([
                 'property_id' => $body->propid,
-                'room_name' => $prop->name ?? '',
                 'client_name' => $body->name . ' ' . $body->surname,
                 'client_phone' => $body->phone ?? null,
                 'client_mobile' => $body->phone ?? null,
@@ -2102,13 +1500,7 @@ class BookingsController extends Controller
 
             if (isset($body->user_id)) {
                 $salesPerson = DB::table('users')->where('id', '=', $body->user_id)->first();
-                if ($salesPerson) {
-                    $nameInitial = !empty($salesPerson->name) ? strtoupper(substr((string) $salesPerson->name, 0, 1)) : '';
-                    $surnameInitial = !empty($salesPerson->surname) ? strtoupper(substr((string) $salesPerson->surname, 0, 1)) : '';
-                    $salesInitials = $nameInitial . $surnameInitial;
-                } else {
-                    $salesInitials = '';
-                }
+                $salesInitials = $salesPerson ? strtoupper($salesPerson->name[0] . $salesPerson->surname[0]) : '';
                 $internalRef = $salesInitials . $bookingId . $channelShort;
             } else {
                 $internalRef = $bookingId . $channelShort;
@@ -2216,21 +1608,16 @@ class BookingsController extends Controller
             } else {
                 if (!empty($body->fees)) {
                     foreach ($body->fees as $fee) {
-                        $feeDescription = is_array($fee) ? ($fee['description'] ?? null) : ($fee->description ?? null);
-                        $feeQuantity = is_array($fee) ? ($fee['quantity'] ?? 0) : ($fee->quantity ?? 0);
-                        $feeUnitPrice = is_array($fee) ? ($fee['unit_price'] ?? 0) : ($fee->unit_price ?? 0);
-                        $feePrice = is_array($fee) ? ($fee['price'] ?? 0) : ($fee->price ?? 0);
-
-                        if ($feeDescription === 'Breakage Deposit') {
+                        if ($fee->description === 'Breakage Deposit') {
                             DB::table('virtualdesigns_erpbookings_damage')->insert([
                                 'booking_id' => $bookingId,
                                 'property_id' => $body->propid,
                                 'internal_ref' => $internalRef . '-BD',
-                                'amount' => $feePrice,
+                                'amount' => $fee->price,
                                 'paid_credit' => 0,
                                 'paid_eft' => 0,
                             ]);
-                            if ($feePrice >= 3000 || (int) $prop->bd_override === 1) {
+                            if ($fee->price >= 3000 || (int) $prop->bd_override === 1) {
                                 DB::table('virtualdesigns_erpbookings_erpbookings')->where('id', '=', $bookingId)->update(['bd_active' => 1]);
                             }
                         } else {
@@ -2240,31 +1627,31 @@ class BookingsController extends Controller
                                 ->where('pl_id', '=', $prop->pricelabs_id)
                                 ->value('currency');
                             if ((int) $prop->country_id === 846) {
-                                $lineMur = (float) $feeUnitPrice;
+                                $lineMur = (float) $fee->unit_price;
                             } else {
                                 if ($currency === 'EUR') {
                                     $rate = (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'EUR/MUR')->value('rate');
-                                    $lineMur = $feeUnitPrice * $rate;
+                                    $lineMur = $fee->unit_price * $rate;
                                 }
                                 if ($currency === 'USD') {
                                     $rate = (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
-                                    $lineMur = $feeUnitPrice * $rate;
+                                    $lineMur = $fee->unit_price * $rate;
                                 }
                                 if ($currency === 'ZAR') {
                                     $usdRate = (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'ZAR/USD')->value('rate');
                                     $murRate = (float) DB::table('virtualdesigns_exchange_rates')->where('symbol', '=', 'USD/MUR')->value('rate');
-                                    $lineMur = ($feeUnitPrice * $usdRate) * $murRate;
+                                    $lineMur = ($fee->unit_price * $usdRate) * $murRate;
                                 }
                             }
                             DB::table('virtualdesigns_erpbookings_fees')->insert([
-                                'description' => $feeDescription,
+                                'description' => $fee->description,
                                 'arrival_date' => $body->arrival,
                                 'departure_date' => $body->departure,
-                                'quantity' => $feeQuantity,
-                                'unit_price' => $feeUnitPrice,
-                                'price' => $feePrice,
+                                'quantity' => $fee->quantity,
+                                'unit_price' => $fee->unit_price,
+                                'price' => $fee->price,
                                 'mur_unit_price' => $lineMur,
-                                'mur_price' => $lineMur * $feeQuantity,
+                                'mur_price' => $lineMur * $fee->quantity,
                                 'booking_id' => $bookingId,
                             ]);
                         }
@@ -2290,27 +1677,14 @@ class BookingsController extends Controller
                 }
 
                 if (!empty($body->tasks)) {
-                    $seenTaskKeys = [];
                     foreach ($body->tasks as $task) {
-                        $taskSelected = is_array($task) ? ($task['selected'] ?? false) : ($task->selected ?? false);
-                        if (!empty($taskSelected)) {
-                            $taskType = (string) (is_array($task) ? ($task['task_type'] ?? '') : ($task->task_type ?? ''));
-                            $taskUser = is_array($task) ? ($task['task_user'] ?? null) : ($task->task_user ?? null);
-                            $taskDate = is_array($task) ? ($task['task_date'] ?? null) : ($task->task_date ?? null);
-                            $taskPrice = is_array($task) ? ($task['task_price'] ?? 0) : ($task->task_price ?? 0);
-
-                            $taskKey = $taskType . '|' . $taskDate . '|' . (string) $taskUser;
-                            if (isset($seenTaskKeys[$taskKey])) {
-                                continue;
-                            }
-                            $seenTaskKeys[$taskKey] = true;
-
-                            if (strpos($taskType, 'Laundry') !== false) {
-                                $this->insertLaundryTask($body->propid, $bookingId, $taskUser, $taskDate, $taskPrice);
-                                $this->pushNotify($taskUser, $bookingId, 'laundry');
+                        if (!empty($task->selected)) {
+                            if (strpos($task->task_type, 'Laundry') !== false) {
+                                $this->insertLaundryTask($body->propid, $bookingId, $task->task_user, $task->task_date, $task->task_price);
+                                $this->pushNotify($task->task_user, $bookingId, 'laundry');
                             } else {
-                                $this->insertCleanTask($body->propid, $bookingId, $taskType, $taskDate, $taskUser, $taskPrice);
-                                $this->pushNotify($taskUser, $bookingId, 'task');
+                                $this->insertCleanTask($body->propid, $bookingId, $task->task_type, $task->task_date, $task->task_user, $task->task_price);
+                                $this->pushNotify($task->task_user, $bookingId, 'task');
                             }
                         }
                     }
@@ -2388,13 +1762,7 @@ class BookingsController extends Controller
 
         if (isset($body->user_id)) {
             $salesPerson = DB::table('users')->where('id', '=', $body->user_id)->first();
-            if ($salesPerson) {
-                $nameInitial = !empty($salesPerson->name) ? strtoupper(substr((string) $salesPerson->name, 0, 1)) : '';
-                $surnameInitial = !empty($salesPerson->surname) ? strtoupper(substr((string) $salesPerson->surname, 0, 1)) : '';
-                $salesInitials = $nameInitial . $surnameInitial;
-            } else {
-                $salesInitials = '';
-            }
+            $salesInitials = $salesPerson ? strtoupper($salesPerson->name[0] . $salesPerson->surname[0]) : '';
             $internalRef = $salesInitials . $bookingResponse->data->booking->bookingid . $channelShort;
         } else {
             $internalRef = $bookingResponse->data->booking->bookingid . $channelShort;
@@ -2407,7 +1775,6 @@ class BookingsController extends Controller
 
         $bookingId = DB::table('virtualdesigns_erpbookings_erpbookings')->insertGetId([
             'property_id' => $body->propid,
-            'room_name' => $prop->name ?? '',
             'client_name' => $body->name . ' ' . $body->surname,
             'client_phone' => $body->phone ?? null,
             'client_mobile' => $body->phone ?? null,
@@ -3221,175 +2588,142 @@ class BookingsController extends Controller
         return $this->corsJson($booking, 200);
     }
 
-  public function allbookings(Request $request)
-{
-    try {
-        // 1. Validation & Auth Check
+    public function allbookings(Request $request)
+    {
         $this->assertApiKey($request);
-        
-        // Use input() instead of header() so it works with standard URL params
-        $userId = $request->input('userid') ?? $request->header('userid');
-        
-        if (!$userId) {
-            return response()->json(['message' => 'User ID is required'], 400);
+
+        $userId = $request->header('userid');
+        if ($userId === null) {
+            return $this->corsJson(['code' => 400, 'message' => 'Missing userid'], 400);
         }
 
-        // 2. Identify User Permissions
-        $groupId = DB::table('users_groups')
-            ->where('user_id', $userId)
-            ->value('user_group_id');
+        $quotesOnly = $request->header('quotesonly');
+        $groupId = DB::table('users_groups')->where('user_id', '=', $userId)->value('user_group_id');
 
-        // 3. Building the Base Query
-        $scopedBaseQuery = DB::table('virtualdesigns_erpbookings_erpbookings as booking')
+        $baseQuery = DB::table('virtualdesigns_erpbookings_erpbookings as booking')
             ->leftJoin('virtualdesigns_properties_properties as property', 'booking.property_id', '=', 'property.id')
             ->leftJoin('users as salesperson', 'booking.made_by', '=', 'salesperson.id')
             ->leftJoin('users as manager', 'property.user_id', '=', 'manager.id')
+            ->leftJoin('users as cancelled_by', 'booking.cancelled_by', '=', 'cancelled_by.id')
             ->leftJoin('virtualdesigns_locations_locations as suburb', 'property.suburb_id', '=', 'suburb.id')
             ->leftJoin('virtualdesigns_erpbookings_guestinfo as guestinfo', 'guestinfo.booking_id', '=', 'booking.id')
             ->whereNull('booking.deleted_at');
 
-        // 4. Group-Based Security Filters
-        $scopedBaseQuery->when((int)$groupId === 1, function ($q) use ($userId) {
-            return $q->where('property.owner_id', $userId)->where('booking.quote_confirmed', 1);
-        })
-        ->when((int)$groupId === 3, function ($q) use ($userId) {
-            return $q->where('property.user_id', $userId);
-        })
-        ->when((int)$groupId === 5, function ($q) use ($userId) {
-            return $q->where('property.bodycorp_id', $userId);
-        });
-
-        $filterProperties = (clone $scopedBaseQuery)
-            ->whereNotNull('property.id')
-            ->select('property.id', 'property.name')
-            ->distinct()
-            ->orderBy('property.name')
-            ->get()
-            ->map(function ($property) {
-                return [
-                    'id' => (int) $property->id,
-                    'name' => (string) ($property->name ?? 'Unnamed Property'),
-                ];
-            })
-            ->values();
-
-        $filteredQueryBase = clone $scopedBaseQuery;
-
-        // 5. Dynamic Filters (Inputs from Frontend)
-        $filteredQueryBase->when($request->input('propid'), function ($q, $val) {
-            return $q->where('booking.property_id', $val);
-        })
-        ->when($request->input('guest'), function ($q, $val) {
-            $search = trim((string) $val);
-            if ($search === '') {
-                return $q;
-            }
-
-            return $q->where(function ($subQuery) use ($search) {
-                $subQuery
-                    ->where('booking.client_name', 'like', '%' . $search . '%')
-                    ->orWhere('booking.booking_ref', 'like', '%' . $search . '%')
-                    ->orWhere('booking.client_email', 'like', '%' . $search . '%')
-                    ->orWhere('booking.client_phone', 'like', '%' . $search . '%')
-                    ->orWhere('booking.client_mobile', 'like', '%' . $search . '%');
-            });
-        })
-        ->when($request->input('arrivalstart'), function ($q, $val) {
-            return $q->where('booking.arrival_date', '>=', date('Y-m-d', strtotime($val)));
-        })
-        ->when($request->input('arrivalend'), function ($q, $val) {
-            return $q->where('booking.arrival_date', '<=', date('Y-m-d', strtotime($val)));
-        });
-
-        $statusCountsRaw = (clone $filteredQueryBase)
-            ->select('booking.status', DB::raw('COUNT(DISTINCT booking.id) as count'))
-            ->groupBy('booking.status')
-            ->get();
-
-        $statusCounts = [
-            'all' => 0,
-            '0' => 0,
-            '1' => 0,
-            'other' => 0,
-        ];
-
-        foreach ($statusCountsRaw as $statusRow) {
-            $statusKey = (string) $statusRow->status;
-            $count = (int) $statusRow->count;
-
-            $statusCounts['all'] += $count;
-            if ($statusKey === '0') {
-                $statusCounts['0'] += $count;
-            } elseif ($statusKey === '1') {
-                $statusCounts['1'] += $count;
-            } else {
-                $statusCounts['other'] += $count;
+        if ((int) $groupId === 1) {
+            $baseQuery->where('property.owner_id', '=', $userId);
+            $baseQuery->where('booking.quote_confirmed', '=', 1);
+        } elseif ((int) $groupId === 3) {
+            $baseQuery->where('property.user_id', '=', $userId);
+        } elseif ((int) $groupId === 5) {
+            $baseQuery->where('property.bodycorp_id', '=', $userId);
+        } elseif ((int) $groupId === 2) {
+            if ($request->header('cancelledquotes')) {
+                $baseQuery->where('booking.status', '=', 1)->where('booking.quote_confirmed', '!=', 1);
+                if ($request->header('cancelstart')) {
+                    $baseQuery->where('booking.date_cancelled', '>=', $request->header('cancelstart') . ' 00:00:00');
+                }
+                if ($request->header('cancelend')) {
+                    $baseQuery->where('booking.date_cancelled', '<=', $request->header('cancelend') . ' 23:59:59');
+                }
             }
         }
 
-        $query = clone $filteredQueryBase;
-        $query->when($request->input('status') && $request->input('status') !== 'all', function ($q) {
-            return $q->where('booking.status', request('status'));
-        });
+        if ($quotesOnly === 'true') {
+            $baseQuery->where('booking.quote_confirmed', '!=', 1)
+                ->where('booking.status', '!=', 1);
+        }
 
-        // 6. Select and Paginate (Don't use ->get() for large travel datasets)
-        $results = $query->select([
-            'booking.id', 'booking.booking_ref', 'booking.arrival_date', 'booking.departure_date',
-            'booking.client_name', 'booking.channel', 'booking.status', 'booking.quote_confirmed',
-            'property.name as prop_name', 'property.id as property_id',
-            'booking.balance_due', 'booking.guest_invoice'
-        ])
-        ->orderBy('booking.arrival_date', 'desc')
-        ->paginate($request->input('perPage', 25)); // Supports pagination out of the box
+        if ($request->header('propid')) {
+            $baseQuery->where('booking.property_id', '=', $request->header('propid'));
+        }
 
-        // 7. Post-Processing (Map through results)
-        $results->getCollection()->transform(function ($booking) {
+        if ($request->header('arrivalstart')) {
+            $baseQuery->where('booking.arrival_date', '>=', date('Y-m-d', strtotime($request->header('arrivalstart'))));
+        }
+        if ($request->header('arrivalend')) {
+            $baseQuery->where('booking.arrival_date', '<=', date('Y-m-d', strtotime($request->header('arrivalend'))));
+        }
+        if ($request->header('todayarrival')) {
+            $baseQuery->where('booking.arrival_date', '=', date('Y-m-d', strtotime($request->header('todayarrival'))));
+        }
+        if ($request->header('todaydeparture')) {
+            $baseQuery->where('booking.departure_date', '=', date('Y-m-d', strtotime($request->header('todaydeparture'))));
+        }
+        if ($request->header('istoday')) {
+            $today = date('Y-m-d');
+            $baseQuery->where('booking.arrival_date', '<', $today)->where('booking.departure_date', '>', $today);
+        }
+
+        $bookings = $baseQuery->select(
+            'booking.id',
+            'booking.bd_active',
+            'booking.booking_ref',
+            'booking.arrival_date',
+            'booking.departure_date',
+            'booking.virtual_card',
+            'booking.balance_due',
+            'booking.guest_invoice',
+            'booking.payment_notes',
+            'booking.so_type',
+            'property.name as prop_name',
+            'property.accounting_name as accounting_name',
+            'property.country_id as country_id',
+            'booking.client_name',
+            'booking.channel',
+            'booking.booking_amount',
+            'booking.created_at as date_quoted',
+            'booking.date_confirmed',
+            'booking.quote_confirmed',
+            'salesperson.name as salesperson_name',
+            'salesperson.surname as salesperson_surname',
+            'booking.status',
+            'suburb.name as suburb',
+            'manager.name as manager_name',
+            'manager.surname as manager_surname',
+            'cancelled_by.name as cancelled_by_name',
+            'cancelled_by.surname as cancelled_by_surname',
+            'booking.so_number',
+            'booking.client_phone',
+            'booking.client_mobile',
+            'booking.client_email',
+            'booking.booking_notes',
+            'booking.room_name',
+            'booking.pay_on_arrival',
+            'booking.no_review',
+            'booking.no_linen',
+            'booking.no_pack',
+            'booking.website_from',
+            'booking.total_com',
+            'booking.bhr_com',
+            'booking.third_party_com',
+            'property.id as property_id',
+            'property.booking_fee as booking_fee',
+            'property.clean_fee as departure_fee',
+            'guestinfo.bank_ac_name',
+            'guestinfo.bank_ac_no',
+            'guestinfo.bank_name',
+            'guestinfo.bank_code',
+            'guestinfo.bank_type',
+            'guestinfo.swift_code',
+            'guestinfo.guest_id as guest_id_doc'
+        )->get();
+
+        foreach ($bookings as $booking) {
+            $booking->cancelled_by = trim(($booking->cancelled_by_name ?? '') . ' ' . ($booking->cancelled_by_surname ?? ''));
             $booking->paid = ($booking->balance_due ?? 0) <= 0 ? 1 : 0;
             $booking->processed = $booking->guest_invoice ? 1 : 0;
-
-            $booking->nights = 0;
-            try {
-                $arrival = trim((string) ($booking->arrival_date ?? ''));
-                $departure = trim((string) ($booking->departure_date ?? ''));
-
-                if (
-                    $arrival !== '' &&
-                    $departure !== '' &&
-                    strcasecmp($arrival, 'false') !== 0 &&
-                    strcasecmp($departure, 'false') !== 0
-                ) {
-                    $start = \Carbon\Carbon::parse($arrival);
-                    $end = \Carbon\Carbon::parse($departure);
-                    $booking->nights = max(0, $start->diffInDays($end));
-                }
-            } catch (\Throwable $e) {
-                $booking->nights = 0;
+            $startTs = strtotime($booking->arrival_date);
+            $endTs = strtotime($booking->departure_date);
+            $booking->nights = (int) round(($endTs - $startTs) / 86400);
+            if ((int) $booking->quote_confirmed !== 1 && (int) $booking->status !== 1) {
+                $startTs = strtotime($booking->date_quoted);
+                $endTs = strtotime(date('Y-m-d'));
+                $booking->days_pending = (int) round(($endTs - $startTs) / 86400) + 1;
             }
-            
-            return $booking;
-        });
+        }
 
-        $response = $results->toArray();
-        $response['filters'] = [
-            'properties' => $filterProperties,
-            'statusCounts' => $statusCounts,
-        ];
-
-        return response()->json($response);
-
-    } catch (\Exception $e) {
-        // Advanced Error Logging
-        Log::error("Booking Fetch Error: " . $e->getMessage(), [
-            'user_id' => $request->header('userid'),
-            'trace' => $e->getTraceAsString()
-        ]);
-
-        return response()->json([
-            'message' => 'Internal Server Error',
-            'error' => config('app.debug') ? $e->getMessage() : 'Contact Support'
-        ], 500);
+        return $this->corsJson($bookings, 200);
     }
-}
 
     public function MailBookingError(Request $request)
     {
